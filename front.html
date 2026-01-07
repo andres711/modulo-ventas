@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IlSupremo - Ventas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <header class="sticky top-0 bg-white border-b z-10">
+    <div class="max-w-5xl mx-auto p-3 flex items-center justify-between">
+      <div class="font-bold">IlSupremo • Ventas</div>
+      <button id="btnRefresh" class="px-3 py-2 rounded-xl bg-gray-900 text-white text-sm">Actualizar</button>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto p-3 grid gap-3 md:grid-cols-[1fr_380px]">
+    <!-- Left: catalog -->
+    <section class="bg-white rounded-2xl shadow-sm border p-3">
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2">
+          <input id="search" class="w-full px-3 py-2 rounded-xl border" placeholder="Buscar producto..." />
+        </div>
+
+        <div class="flex gap-2 overflow-auto pb-1" id="cats"></div>
+
+        <div id="grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-2"></div>
+      </div>
+    </section>
+
+    <!-- Right: cart -->
+    <aside class="bg-white rounded-2xl shadow-sm border p-3 h-fit sticky md:top-16">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-semibold">Venta</h2>
+        <button id="btnClear" class="text-sm underline">Vaciar</button>
+      </div>
+
+      <div id="cart" class="grid gap-2"></div>
+
+      <div class="mt-3 border-t pt-3 grid gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm text-gray-600">Total</span>
+          <span id="total" class="text-xl font-bold">$0</span>
+        </div>
+
+        <label class="text-sm text-gray-600">Medio de pago</label>
+        <select id="medioPago" class="px-3 py-2 rounded-xl border">
+          <option>Efectivo</option>
+          <option>Tarjeta</option>
+          <option>Transferencia</option>
+        </select>
+
+        <label class="text-sm text-gray-600">Observación (opcional)</label>
+        <input id="obs" class="px-3 py-2 rounded-xl border" placeholder="Ej: Promo, descuento, etc." />
+
+        <button id="btnSave" class="mt-1 px-4 py-3 rounded-2xl bg-green-600 text-white font-semibold">
+          Guardar venta
+        </button>
+
+        <p id="msg" class="text-sm"></p>
+      </div>
+    </aside>
+  </main>
+
+<script>
+  // 1) PEGÁ ACÁ tu URL de Apps Script Web App (la que termina en /exec)
+  const API_URL = "https://script.google.com/macros/s/AKfycbzkwXbV4GvBMbt1-yMFFsCIduEZpojmi9W5BTiWAms5x2KSxRKDdZPIBPPIYsJEic6I/exec";
+
+  const CATEGORIES = ["Polleria","Congelados","Almacen","Bebidas"];
+
+  let products = [];
+  let activeCat = "Polleria";
+  let cart = new Map(); // productoId -> {producto, cantidad}
+
+  const $ = (id) => document.getElementById(id);
+
+  function money(n){
+    const v = Number(n||0);
+    return v.toLocaleString('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits: 0 });
+  }
+
+  function setMsg(text, ok=true){
+    const el = $("msg");
+    el.textContent = text || "";
+    el.className = "text-sm " + (ok ? "text-green-700" : "text-red-700");
+  }
+
+  async function apiGetProducts(){
+    const res = await fetch(`${API_URL}?action=products`);
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error || "Error");
+    // Normalizar tipos
+    return (json.products || []).map(p => ({
+      ...p,
+      id: String(p.id || "").trim(),
+      categoria: String(p.categoria || "").trim(),
+      nombre: String(p.nombre || "").trim(),
+      descripcion: String(p.descripcion || "").trim(),
+      imagenUrl: String(p.imagenUrl || "").trim(),
+      precio: Number(p.precio || 0),
+      stock: Number(p.stock || 0),
+      activo: String(p.activo || "TRUE").toUpperCase() !== "FALSE",
+    })).filter(p => p.id && p.activo);
+  }
+
+  async function apiCreateSale(items, medioPago, observacion){
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({
+        action: "sale_create",
+        items,
+        medioPago,
+        observacion
+      })
+    });
+    const json = await res.json();
+    if(!json.ok) throw new Error(json.error || "Error");
+    return json;
+  }
+
+  function renderCats(){
+    const wrap = $("cats");
+    wrap.innerHTML = "";
+    for(const c of CATEGORIES){
+      const btn = document.createElement("button");
+      btn.className = "px-3 py-2 rounded-xl text-sm border " + (c===activeCat ? "bg-gray-900 text-white" : "bg-white");
+      btn.textContent = c;
+      btn.onclick = () => { activeCat = c; renderGrid(); };
+      wrap.appendChild(btn);
+    }
+  }
+
+  function filteredProducts(){
+    const q = $("search").value.trim().toLowerCase();
+    return products
+      .filter(p => p.categoria === activeCat)
+      .filter(p => !q || p.nombre.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q));
+  }
+
+  function renderGrid(){
+    const grid = $("grid");
+    grid.innerHTML = "";
+
+    const list = filteredProducts();
+    if(list.length === 0){
+      grid.innerHTML = `<div class="col-span-full text-sm text-gray-600 p-3">No hay productos en esta categoría.</div>`;
+      return;
+    }
+
+    for(const p of list){
+      const card = document.createElement("button");
+      card.className = "text-left bg-white border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition";
+      card.onclick = () => addToCart(p);
+
+      const img = p.imagenUrl
+        ? `<img src="${p.imagenUrl}" alt="${p.nombre}" class="w-full h-28 object-cover bg-gray-100" />`
+        : `<div class="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Sin imagen</div>`;
+
+      const stockBadge = p.stock > 0
+        ? `<span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">Stock ${p.stock}</span>`
+        : `<span class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">Sin stock</span>`;
+
+      card.innerHTML = `
+        ${img}
+        <div class="p-3 grid gap-1">
+          <div class="font-semibold leading-tight">${p.nombre}</div>
+          <div class="text-sm text-gray-700">${money(p.precio)}</div>
+          <div class="flex items-center justify-between gap-2">
+            ${stockBadge}
+            <span class="text-xs text-gray-500">Tocar para agregar</span>
+          </div>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+  }
+
+  function addToCart(p){
+    if(p.stock <= 0){
+      setMsg("Ese producto no tiene stock.", false);
+      return;
+    }
+    const current = cart.get(p.id);
+    const nextQty = (current ? current.cantidad : 0) + 1;
+    if(nextQty > p.stock){
+      setMsg(`Stock insuficiente. Stock: ${p.stock}`, false);
+      return;
+    }
+    cart.set(p.id, { producto: p, cantidad: nextQty });
+    setMsg("");
+    renderCart();
+  }
+
+  function renderCart(){
+    const wrap = $("cart");
+    wrap.innerHTML = "";
+    let total = 0;
+
+    if(cart.size === 0){
+      wrap.innerHTML = `<div class="text-sm text-gray-600">Seleccioná productos del catálogo.</div>`;
+      $("total").textContent = money(0);
+      return;
+    }
+
+    for(const [pid, item] of cart.entries()){
+      const p = item.producto;
+      const qty = item.cantidad;
+      const line = p.precio * qty;
+      total += line;
+
+      const row = document.createElement("div");
+      row.className = "border rounded-2xl p-3 grid gap-2";
+
+      row.innerHTML = `
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="font-semibold leading-tight">${p.nombre}</div>
+            <div class="text-sm text-gray-600">${money(p.precio)} • Stock ${p.stock}</div>
+          </div>
+          <button class="text-sm underline" data-del="${pid}">Quitar</button>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <button class="px-3 py-2 rounded-xl border" data-dec="${pid}">-</button>
+            <input class="w-14 text-center px-2 py-2 rounded-xl border" value="${qty}" inputmode="numeric" data-qty="${pid}" />
+            <button class="px-3 py-2 rounded-xl border" data-inc="${pid}">+</button>
+          </div>
+          <div class="font-semibold">${money(line)}</div>
+        </div>
+      `;
+
+      wrap.appendChild(row);
+    }
+
+    $("total").textContent = money(total);
+
+    // bind events
+    wrap.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+      cart.delete(b.dataset.del);
+      renderCart();
+    });
+
+    wrap.querySelectorAll("[data-dec]").forEach(b => b.onclick = () => {
+      const pid = b.dataset.dec;
+      const it = cart.get(pid);
+      if(!it) return;
+      it.cantidad = Math.max(1, it.cantidad - 1);
+      cart.set(pid, it);
+      renderCart();
+    });
+
+    wrap.querySelectorAll("[data-inc]").forEach(b => b.onclick = () => {
+      const pid = b.dataset.inc;
+      const it = cart.get(pid);
+      if(!it) return;
+      if(it.cantidad + 1 > it.producto.stock){
+        setMsg(`Stock insuficiente. Stock: ${it.producto.stock}`, false);
+        return;
+      }
+      it.cantidad++;
+      cart.set(pid, it);
+      setMsg("");
+      renderCart();
+    });
+
+    wrap.querySelectorAll("[data-qty]").forEach(inp => inp.onchange = () => {
+      const pid = inp.dataset.qty;
+      const it = cart.get(pid);
+      if(!it) return;
+      let v = Number(inp.value || 1);
+      if(!Number.isFinite(v) || v < 1) v = 1;
+      if(v > it.producto.stock){
+        v = it.producto.stock;
+        setMsg(`Ajusté cantidad al stock (${v}).`, false);
+      } else {
+        setMsg("");
+      }
+      it.cantidad = v;
+      cart.set(pid, it);
+      renderCart();
+    });
+  }
+
+  async function refresh(){
+    setMsg("Cargando productos...");
+    try{
+      products = await apiGetProducts();
+      setMsg("");
+      renderCats();
+      renderGrid();
+      renderCart();
+    }catch(e){
+      setMsg("Error cargando productos: " + e.message, false);
+    }
+  }
+
+  async function saveSale(){
+    if(cart.size === 0){
+      setMsg("No hay productos seleccionados.", false);
+      return;
+    }
+
+    const items = Array.from(cart.values()).map(it => ({
+      productoId: it.producto.id,
+      cantidad: it.cantidad
+    }));
+
+    const medioPago = $("medioPago").value;
+    const observacion = $("obs").value.trim();
+
+    $("btnSave").disabled = true;
+    $("btnSave").classList.add("opacity-60");
+
+    try{
+      setMsg("Guardando venta...");
+      await apiCreateSale(items, medioPago, observacion);
+      setMsg("Venta guardada ✅");
+      cart.clear();
+      $("obs").value = "";
+      await refresh(); // recargar para ver stock actualizado
+    }catch(e){
+      setMsg("No se pudo guardar: " + e.message, false);
+    }finally{
+      $("btnSave").disabled = false;
+      $("btnSave").classList.remove("opacity-60");
+    }
+  }
+
+  // events
+  $("btnRefresh").onclick = refresh;
+  $("btnSave").onclick = saveSale;
+  $("btnClear").onclick = () => { cart.clear(); renderCart(); setMsg(""); };
+  $("search").oninput = renderGrid;
+
+  // init
+  renderCats();
+  refresh();
+</script>
+</body>
+</html>
