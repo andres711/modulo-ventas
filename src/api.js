@@ -15,6 +15,7 @@ export async function getProducts() {
       precio: Number(p.precio || 0),
       stock: Number(p.stock || 0),
       activo: String(p.activo || "TRUE").toUpperCase() !== "FALSE",
+      unidad: String(p.unidad || "UN").toUpperCase(),
     }))
     .filter(p => p.id && p.activo);
 }

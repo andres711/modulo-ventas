@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import Drawer from "../components/Drawer";
+import Toast from "../components/Toast";
+import { useToast } from "../hooks/useToast";
+
+
 
 const CATEGORIES = ["Polleria", "Congelados", "Almacen", "Bebidas"];
 const money = (n) =>
@@ -42,6 +47,8 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [msg, setMsg] = useState({ text: "", ok: true });
   const [saving, setSaving] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const { toast, showToast, hideToast } = useToast();
 
   const [form, setForm] = useState({
     id: "",
@@ -86,6 +93,7 @@ export default function Products() {
       activo: !!p.activo,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+    setFormOpen(true);
   }
 
   function reset() {
@@ -99,22 +107,35 @@ export default function Products() {
       descripcion: "",
       activo: true,
     });
+    setFormOpen(true);
   }
 
   async function save() {
-    // Validaciones mínimas
-    if (!form.categoria) return setMsg({ text: "Categoria requerida", ok: false });
-    if (!form.nombre.trim()) return setMsg({ text: "Nombre requerido", ok: false });
+    if (!form.categoria) {
+      setMsg({ text: "Categoria requerida", ok: false });
+      return false;
+    }
+    if (!form.nombre.trim()) {
+      setMsg({ text: "Nombre requerido", ok: false });
+      return false;
+    }
 
     const precio = Number(form.precio);
     const stock = Number(form.stock);
 
-    if (!Number.isFinite(precio) || precio < 0) return setMsg({ text: "Precio inválido", ok: false });
-    if (!Number.isFinite(stock) || stock < 0) return setMsg({ text: "Stock inválido", ok: false });
+    if (!Number.isFinite(precio) || precio < 0) {
+      setMsg({ text: "Precio inválido", ok: false });
+      return false;
+    }
+    if (!Number.isFinite(stock) || stock < 0) {
+      setMsg({ text: "Stock inválido", ok: false });
+      return false;
+    }
 
     setSaving(true);
     try {
       setMsg({ text: "Guardando...", ok: true });
+
       await apiUpsertProduct({
         id: form.id || undefined,
         categoria: form.categoria,
@@ -125,19 +146,33 @@ export default function Products() {
         descripcion: form.descripcion.trim(),
         activo: form.activo,
       });
-      setMsg({ text: "Guardado ✅", ok: true });
+
+      // setMsg({ text: "Guardado ✅", ok: true });
+      showToast({ ok: true, text: "Producto guardado ✅" });
+      vibrate(35);
       reset();
       await refresh();
+      return true;
     } catch (e) {
-      setMsg({ text: e.message, ok: false });
+      // setMsg({ text: e.message, ok: false });
+      showToast({ ok: false, text: e.message });
+      vibrate(60);
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  
+  function vibrate(ms = 40) {
+  try {
+    if (navigator?.vibrate) navigator.vibrate(ms);
+  } catch(e) {e}
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
-      <div className="text-3xl font-black text-pink-600">TEST TAILWIND</div>
+    <div className="pb-20 md:pb-0 min-h-screen bg-gray-50 text-gray-900">      
       <header className="sticky top-0 bg-white border-b z-10">
         <div className="max-w-6xl mx-auto p-3 flex items-center justify-between">
           <div className="font-bold">IlSupremo • Productos</div>
@@ -149,7 +184,7 @@ export default function Products() {
 
       <main className="max-w-6xl mx-auto p-3 grid gap-3 md:grid-cols-[420px_1fr]">
         {/* Form */}
-        <section className="bg-white rounded-2xl shadow-sm border p-3 h-fit">
+        <section className="hidden md:block card p-3 h-fit">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">{form.id ? "Editar producto" : "Nuevo producto"}</h2>
             <button onClick={reset} className="text-sm underline">Nuevo</button>
@@ -260,7 +295,6 @@ export default function Products() {
               </button>
             ))}
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-2">
             {filtered.map(p => (
               <button
@@ -286,6 +320,119 @@ export default function Products() {
           </div>
         </section>
       </main>
+      <div className="md:hidden fixed inset-x-0 bottom-0 z-30">
+        <div className="mx-auto max-w-6xl px-3 pb-3">
+          <button className="btn btn-primary w-full py-3" onClick={() => { reset(); }}>
+            Nuevo producto
+          </button>
+        </div>
+      </div>
+      <Drawer
+        open={formOpen}
+        title={form.id ? "Editar producto" : "Nuevo producto"}
+        onClose={() => setFormOpen(false)}
+        footer={
+          <div className="grid gap-2">
+            <button
+              disabled={saving}
+              onClick={async () => {
+                const ok = await save();
+                if (ok) 
+                {
+                  await sleep(200);
+                  setFormOpen(false);
+                  setMsg({ text: "", ok: true });
+                }
+              }}
+              className={`btn btn-primary w-full py-3 ${saving ? "opacity-70" : ""}`}
+            >
+              {saving ? "Guardando..." : "Guardar"}
+            </button>
+            {msg.text && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-rose-700"}`}>{msg.text}</p>}
+          </div>
+        }
+      >
+        {/* Pegá acá el contenido del formulario (inputs/select/preview/checkbox), SIN el botón guardar */}
+        {/* O sea: todo menos el botón final */}
+        <div className="flex items-center justify-between">
+            <h2 className="font-semibold">{form.id ? "Editar producto" : "Nuevo producto"}</h2>
+            <button onClick={reset} className="text-sm underline">Nuevo</button>
+          </div>
+
+          <div className="grid gap-2 mt-3">
+            <label className="text-sm text-gray-600">Categoría</label>
+            <select
+              className="px-3 py-2 rounded-xl border"
+              value={form.categoria}
+              onChange={(e) => setForm(f => ({ ...f, categoria: e.target.value }))}
+            >
+              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+
+            <label className="text-sm text-gray-600">Nombre</label>
+            <input
+              className="px-3 py-2 rounded-xl border"
+              value={form.nombre}
+              onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))}
+              placeholder="Ej: Mila pollo casera 1kg"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm text-gray-600">Precio</label>
+                <input
+                  className="w-full px-3 py-2 rounded-xl border"
+                  inputMode="numeric"
+                  value={form.precio}
+                  onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))}
+                  placeholder="7999"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">Stock</label>
+                <input
+                  className="w-full px-3 py-2 rounded-xl border"
+                  inputMode="numeric"
+                  value={form.stock}
+                  onChange={(e) => setForm(f => ({ ...f, stock: e.target.value }))}
+                  placeholder="12"
+                />
+              </div>
+            </div>
+
+            <label className="text-sm text-gray-600">Imagen URL</label>
+            <input
+              className="px-3 py-2 rounded-xl border"
+              value={form.imagenUrl}
+              onChange={(e) => setForm(f => ({ ...f, imagenUrl: e.target.value }))}
+              placeholder="https://..."
+            />
+
+            {form.imagenUrl?.trim() && (
+              <img src={form.imagenUrl.trim()} alt="preview" className="w-full h-40 object-cover rounded-2xl border bg-gray-100" />
+            )}
+
+            <label className="text-sm text-gray-600">Descripción</label>
+            <textarea
+              className="px-3 py-2 rounded-xl border"
+              rows={3}
+              value={form.descripcion}
+              onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))}
+              placeholder="Opcional"
+            />
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.activo}
+                onChange={(e) => setForm(f => ({ ...f, activo: e.target.checked }))}
+              />
+              Producto activo
+            </label>            
+            {msg.text && <p className={`text-sm ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</p>}
+          </div>
+    </Drawer>
+    <Toast show={toast.show} ok={toast.ok} text={toast.text} onClose={hideToast} />
     </div>
   );
 }
