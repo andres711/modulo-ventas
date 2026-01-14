@@ -29,6 +29,7 @@ async function apiGetProducts() {
       descripcion: String(p.descripcion || "").trim(),
       imagenUrl: String(p.imagenUrl || "").trim(),
       precio: Number(p.precio || 0),
+      costo: Number(p.costo || 0),
       stock: Number(p.stock || 0),
       unidad: String(p.unidad || "UN").trim(), // por si lo usás
       activo: String(p.activo || "TRUE").toUpperCase() !== "FALSE",
@@ -79,6 +80,8 @@ export default function Products() {
     imagenUrl: "",
     descripcion: "",
     activo: true,
+    costo: "",
+    unidad: "UN"
   });
 
   async function refresh() {
@@ -103,16 +106,18 @@ export default function Products() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return products
-      .filter((p) => p.categoria === activeCat)
-      .filter((p) => {
-        if (!q) return true;
-        const name = String(p?.nombre || "").toLowerCase();
-        const desc = String(p?.descripcion || "").toLowerCase();
-        return name.includes(q) || desc.includes(q);
-      });
+  const q = search.trim().toLowerCase();
+  return products
+    .filter((p) => p.categoria === activeCat)
+    .filter((p) => {
+      if (!q) return true;
+      const name = (p.nombre || "").toLowerCase();
+      const id = String(p.id || "").toLowerCase();
+      const desc = (p.descripcion || "").toLowerCase();
+      return name.includes(q) || id.includes(q) || desc.includes(q);
+    });
   }, [products, activeCat, search]);
+
 
   function openNewProduct() {
     setMsg({ text: "", ok: true });
@@ -121,6 +126,8 @@ export default function Products() {
       categoria: activeCat,
       nombre: "",
       precio: "",
+      costo: "",
+      unidad: "UN",
       stock: "",
       imagenUrl: "",
       descripcion: "",
@@ -140,6 +147,8 @@ export default function Products() {
       imagenUrl: p.imagenUrl,
       descripcion: p.descripcion,
       activo: !!p.activo,
+      costo: String(p.costo ?? ""),
+      unidad: String(p.unidad || "UN")
     });
     setFormOpen(true);
   }
@@ -154,6 +163,7 @@ export default function Products() {
       return false;
     }
 
+    const costo = Number(form.costo);
     const precio = Number(form.precio);
     const stock = Number(form.stock);
 
@@ -165,6 +175,15 @@ export default function Products() {
       setMsg({ text: "Stock inválido", ok: false });
       return false;
     }
+    if (!["UN", "KG"].includes(form.unidad)) {
+    setMsg({ text: "Unidad inválida", ok: false });
+    return false;
+    }
+
+    if (!Number.isFinite(costo) || costo < 0) {
+      setMsg({ text: "Costo inválido", ok: false });
+      return false;
+    }
 
     setSaving(true);
     try {
@@ -172,25 +191,27 @@ export default function Products() {
         id: form.id || undefined,
         categoria: form.categoria,
         nombre: String(form.nombre).trim(),
+        costo, 
         precio,
+        unidad: form.unidad,
         stock,
         imagenUrl: String(form.imagenUrl || "").trim(),
         descripcion: String(form.descripcion || "").trim(),
         activo: !!form.activo,
       });
 
-      showToast({ ok: true, text: "Producto guardado ✅" });
-      vibrate(35);
-      await refresh();
+        showToast({ ok: true, text: "Producto guardado ✅" });
+        vibrate(35);
+        await refresh();
 
-      return true;
-    } catch (e) {
-      showToast({ ok: false, text: e.message });
-      vibrate(60);
-      return false;
-    } finally {
-      setSaving(false);
-    }
+        return true;
+      } catch (e) {
+        showToast({ ok: false, text: e.message });
+        vibrate(60);
+        return false;
+      } finally {
+        setSaving(false);
+      }
   }
 
   return (
@@ -220,7 +241,13 @@ export default function Products() {
                 <option key={c}>{c}</option>
               ))}
             </select>
-
+            <label className="text-sm text-gray-600">ID (opcional)</label>
+            <input
+              className="input w-full"
+              value={form.id}
+              onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
+              placeholder="Ej: 121 (si lo dejás vacío se genera solo)"
+            />            
             <label className="text-sm text-gray-600">Nombre</label>
             <input
               className="input w-full"
@@ -228,43 +255,65 @@ export default function Products() {
               onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
               placeholder="Ej: Milanesa de pollo"
             />
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-sm text-gray-600">Precio</label>
-                <input
-                  className="input w-full"
-                  inputMode="numeric"
-                  value={form.precio}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, precio: e.target.value }))
-                  }
-                  placeholder="7999"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Stock</label>
-                <input
-                  className="input w-full"
-                  inputMode="numeric"
-                  value={form.stock}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, stock: e.target.value }))
-                  }
-                  placeholder="12"
-                />
-              </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-sm text-gray-600">Unidad</label>
+              <select
+                className="input w-full"
+                value={form.unidad}
+                onChange={(e) => setForm((f) => ({ ...f, unidad: e.target.value }))}
+              >
+                <option value="UN">UN</option>
+                <option value="KG">KG</option>
+              </select>
             </div>
 
-            <label className="text-sm text-gray-600">Imagen URL</label>
-            <input
-              className="input w-full"
-              value={form.imagenUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, imagenUrl: e.target.value }))
-              }
-              placeholder="https://..."
-            />
+            <div>
+              <label className="text-sm text-gray-600">Stock</label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.stock}
+                onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                placeholder={form.unidad === "KG" ? "Ej: 5.5" : "Ej: 12"}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-sm text-gray-600">Costo</label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.costo}
+                onChange={(e) => setForm((f) => ({ ...f, costo: e.target.value }))}
+                placeholder="Ej: 4500"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-600">
+                Precio {form.unidad === "KG" ? "(por KG)" : "(unitario)"}
+              </label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.precio}
+                onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
+                placeholder={form.unidad === "KG" ? "Ej: 8000" : "Ej: 1200"}
+              />
+            </div>
+          </div>
+          <label className="text-sm text-gray-600">Imagen URL</label>
+          <input
+            className="input w-full"
+            value={form.imagenUrl}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, imagenUrl: e.target.value }))
+            }
+            placeholder="https://..."
+          />
 
             {String(form.imagenUrl || "").trim() && (
               <img
@@ -335,7 +384,7 @@ export default function Products() {
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 py-2">
+         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 py-2">
             {CATEGORIES.map((c) => (
               <button
                 key={c}
@@ -343,7 +392,7 @@ export default function Products() {
                   setActiveCat(c);
                   setForm((f) => ({ ...f, categoria: c }));
                 }}
-                className={`px-2 py-2 rounded-xl text-sm border text-center ${
+                className={`px-2 py-2 rounded-xl text-sm border font-medium text-center leading-tight whitespace-normal break-words min-h-[44px] ${
                   c === activeCat ? "bg-gray-900 text-white" : "bg-white"
                 }`}
               >
@@ -443,7 +492,13 @@ export default function Products() {
               <option key={c}>{c}</option>
             ))}
           </select>
-
+          <label className="text-sm text-gray-600">ID (opcional)</label>
+          <input
+            className="input w-full"
+            value={form.id}
+            onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
+            placeholder="Ej: 1 (si lo dejás vacío se genera solo)"
+          />
           <label className="text-sm text-gray-600">Nombre</label>
           <input
             className="input w-full"
@@ -454,15 +509,17 @@ export default function Products() {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-sm text-gray-600">Precio</label>
-              <input
+              <label className="text-sm text-gray-600">Unidad</label>
+              <select
                 className="input w-full"
-                inputMode="numeric"
-                value={form.precio}
-                onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
-                placeholder="7999"
-              />
+                value={form.unidad}
+                onChange={(e) => setForm((f) => ({ ...f, unidad: e.target.value }))}
+              >
+                <option value="UN">UN</option>
+                <option value="KG">KG</option>
+              </select>
             </div>
+
             <div>
               <label className="text-sm text-gray-600">Stock</label>
               <input
@@ -470,11 +527,36 @@ export default function Products() {
                 inputMode="numeric"
                 value={form.stock}
                 onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
-                placeholder="12"
+                placeholder={form.unidad === "KG" ? "Ej: 5.5" : "Ej: 12"}
               />
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-sm text-gray-600">Costo</label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.costo}
+                onChange={(e) => setForm((f) => ({ ...f, costo: e.target.value }))}
+                placeholder="Ej: 4500"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-gray-600">
+                Precio {form.unidad === "KG" ? "(por KG)" : "(unitario)"}
+              </label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.precio}
+                onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
+                placeholder={form.unidad === "KG" ? "Ej: 8000" : "Ej: 1200"}
+              />
+            </div>
+          </div>
           <label className="text-sm text-gray-600">Imagen URL</label>
           <input
             className="input w-full"

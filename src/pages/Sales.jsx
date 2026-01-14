@@ -104,18 +104,18 @@ export default function Sales() {
   // -------------------------
   // Derived
   // -------------------------
-  const filtered = useMemo(() => {
+    const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-
     return products
-      .filter((p) => (p?.categoria || "") === activeCat)
+      .filter((p) => p.categoria === activeCat)
       .filter((p) => {
         if (!q) return true;
-        const name = String(p?.nombre || "").toLowerCase();
-        const desc = String(p?.descripcion || "").toLowerCase();
-        return name.includes(q) || desc.includes(q);
+        const name = (p.nombre || "").toLowerCase();
+        const id = String(p.id || "").toLowerCase();
+        const desc = (p.descripcion || "").toLowerCase();
+        return name.includes(q) || id.includes(q) || desc.includes(q);
       });
-  }, [products, activeCat, search]);
+    }, [products, activeCat, search]);
 
   const cartItems = useMemo(() => {
     return Array.from(cart.values()).sort(
@@ -145,8 +145,8 @@ export default function Sales() {
 
   function addToCart(p) {
     if (Number(p.stock || 0) <= 0) {
-      setMsg({ text: "Ese producto no tiene stock.", ok: false });
-      showToast({ ok: false, text: "Ese producto no tiene stock." });
+      setMsg({ text: "Sin stock.", ok: false });
+      showToast({ ok: false, text: "Sin stock." });
       vibrate(60);
       return;
     }
@@ -181,7 +181,7 @@ export default function Sales() {
         total: undefined,
       });
 
-      showToast({ ok: true, text: `Agregado: ${p.nombre} (x${nextQty})` });
+      showToast({ ok: true, text: "Agregado" });
       vibrate(30);
       setMsg({ text: "", ok: true });
       return next;
@@ -208,7 +208,7 @@ export default function Sales() {
       }
 
       next.set(pid, { ...it, cantidad: v, addedAt: Date.now() });
-      showToast({ ok: true, text: `Actualizado: ${it.producto?.nombre} (x${v})` });
+      showToast({ ok: true, text: "Actualizado" });
       vibrate(20);
       return next;
     });
@@ -746,7 +746,7 @@ export default function Sales() {
 
                   showToast({
                     ok: true,
-                    text: `Editado: ${kgProduct.nombre} • ${money(totalValue)} → ${kg.toFixed(3)} kg`,
+                    text: `Editado: ${kgProduct.nombre}`,
                   });
                   vibrate(25);
                   return next;
@@ -775,7 +775,7 @@ export default function Sales() {
 
                 showToast({
                   ok: true,
-                  text: `Agregado: ${kgProduct.nombre} • ${money(totalValue)} → ${kg.toFixed(3)} kg`,
+                  text: `Agregado: ${kgProduct.nombre}`,
                 });
                 vibrate(25);
                 return next;
