@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import Drawer from "../components/Drawer";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
-
-
+import Spinner from "../components/Spinner";
 
 const CATEGORIES = ["Polleria", "Congelados", "Almacen", "Bebidas"];
+
 const money = (n) =>
-  Number(n || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+  Number(n || 0).toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  });
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -15,8 +19,9 @@ async function apiGetProducts() {
   const res = await fetch(`${API_URL}?action=products`);
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || "Error cargando productos");
+
   return (json.products || [])
-    .map(p => ({
+    .map((p) => ({
       ...p,
       id: String(p.id || "").trim(),
       categoria: String(p.categoria || "").trim(),
@@ -25,9 +30,10 @@ async function apiGetProducts() {
       imagenUrl: String(p.imagenUrl || "").trim(),
       precio: Number(p.precio || 0),
       stock: Number(p.stock || 0),
+      unidad: String(p.unidad || "UN").trim(), // por si lo usás
       activo: String(p.activo || "TRUE").toUpperCase() !== "FALSE",
     }))
-    .filter(p => p.id);
+    .filter((p) => p.id);
 }
 
 async function apiUpsertProduct(row) {
@@ -41,14 +47,28 @@ async function apiUpsertProduct(row) {
   return json;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function vibrate(ms = 40) {
+  try {
+    if (navigator?.vibrate) navigator.vibrate(ms);
+  } catch (e) {
+    e;
+  }
+}
+
 export default function Products() {
+  const { toast, showToast, hideToast } = useToast();
+
   const [products, setProducts] = useState([]);
   const [activeCat, setActiveCat] = useState("Polleria");
   const [search, setSearch] = useState("");
-  const [msg, setMsg] = useState({ text: "", ok: true });
+
   const [saving, setSaving] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  const [msg, setMsg] = useState({ text: "", ok: true });
   const [formOpen, setFormOpen] = useState(false);
-  const { toast, showToast, hideToast } = useToast();
 
   const [form, setForm] = useState({
     id: "",
@@ -62,41 +82,40 @@ export default function Products() {
   });
 
   async function refresh() {
-    setMsg({ text: "Cargando...", ok: true });
+    const start = Date.now();
+    setLoadingProducts(true);
     try {
       const p = await apiGetProducts();
       setProducts(p);
-      setMsg({ text: "", ok: true });
     } catch (e) {
-      setMsg({ text: e.message, ok: false });
+      showToast({ ok: false, text: e.message });
+    } finally {
+      const elapsed = Date.now() - start;
+      const min = 250;
+      if (elapsed < min) await sleep(min - elapsed);
+      setLoadingProducts(false);
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return products
-      .filter(p => p.categoria === activeCat)
-      .filter(p => !q || p.nombre.toLowerCase().includes(q) || p.descripcion.toLowerCase().includes(q));
+      .filter((p) => p.categoria === activeCat)
+      .filter((p) => {
+        if (!q) return true;
+        const name = String(p?.nombre || "").toLowerCase();
+        const desc = String(p?.descripcion || "").toLowerCase();
+        return name.includes(q) || desc.includes(q);
+      });
   }, [products, activeCat, search]);
 
-  function edit(p) {
-    setForm({
-      id: p.id,
-      categoria: p.categoria,
-      nombre: p.nombre,
-      precio: String(p.precio ?? ""),
-      stock: String(p.stock ?? ""),
-      imagenUrl: p.imagenUrl,
-      descripcion: p.descripcion,
-      activo: !!p.activo,
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    setFormOpen(true);
-  }
-
-  function reset() {
+  function openNewProduct() {
+    setMsg({ text: "", ok: true });
     setForm({
       id: "",
       categoria: activeCat,
@@ -110,12 +129,27 @@ export default function Products() {
     setFormOpen(true);
   }
 
+  function edit(p) {
+    setMsg({ text: "", ok: true });
+    setForm({
+      id: p.id,
+      categoria: p.categoria,
+      nombre: p.nombre,
+      precio: String(p.precio ?? ""),
+      stock: String(p.stock ?? ""),
+      imagenUrl: p.imagenUrl,
+      descripcion: p.descripcion,
+      activo: !!p.activo,
+    });
+    setFormOpen(true);
+  }
+
   async function save() {
     if (!form.categoria) {
-      setMsg({ text: "Categoria requerida", ok: false });
+      setMsg({ text: "Categoría requerida", ok: false });
       return false;
     }
-    if (!form.nombre.trim()) {
+    if (!String(form.nombre || "").trim()) {
       setMsg({ text: "Nombre requerido", ok: false });
       return false;
     }
@@ -134,27 +168,23 @@ export default function Products() {
 
     setSaving(true);
     try {
-      setMsg({ text: "Guardando...", ok: true });
-
       await apiUpsertProduct({
         id: form.id || undefined,
         categoria: form.categoria,
-        nombre: form.nombre.trim(),
+        nombre: String(form.nombre).trim(),
         precio,
         stock,
-        imagenUrl: form.imagenUrl.trim(),
-        descripcion: form.descripcion.trim(),
-        activo: form.activo,
+        imagenUrl: String(form.imagenUrl || "").trim(),
+        descripcion: String(form.descripcion || "").trim(),
+        activo: !!form.activo,
       });
 
-      // setMsg({ text: "Guardado ✅", ok: true });
       showToast({ ok: true, text: "Producto guardado ✅" });
       vibrate(35);
-      reset();
       await refresh();
+
       return true;
     } catch (e) {
-      // setMsg({ text: e.message, ok: false });
       showToast({ ok: false, text: e.message });
       vibrate(60);
       return false;
@@ -163,31 +193,18 @@ export default function Products() {
     }
   }
 
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  
-  function vibrate(ms = 40) {
-  try {
-    if (navigator?.vibrate) navigator.vibrate(ms);
-  } catch(e) {e}
-  }
-
   return (
-    <div className="pb-20 md:pb-0 min-h-screen bg-gray-50 text-gray-900">      
-      <header className="sticky top-0 bg-white border-b z-10">
-        <div className="max-w-6xl mx-auto p-3 flex items-center justify-between">
-          <div className="font-bold">IlSupremo • Productos</div>
-          <div className="flex gap-2">
-            <button onClick={refresh} className="px-3 py-2 rounded-xl bg-gray-900 text-white text-sm">Actualizar</button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-3 grid gap-3 md:grid-cols-[420px_1fr]">
-        {/* Form */}
-        <section className="hidden md:block card p-3 h-fit">
+    <div className="pb-20 md:pb-0 min-h-screen bg-gray-50 text-gray-900">
+      <main className="max-w-6xl mx-auto p-3 grid gap-4 md:grid-cols-[420px_1fr]">
+        {/* Form (desktop) */}
+        <section className="hidden md:block card p-4 h-fit">
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">{form.id ? "Editar producto" : "Nuevo producto"}</h2>
-            <button onClick={reset} className="text-sm underline">Nuevo</button>
+            <h2 className="font-semibold">
+              {form.id ? "Editar producto" : "Nuevo producto"}
+            </h2>
+            <button onClick={openNewProduct} className="text-sm underline">
+              Nuevo
+            </button>
           </div>
 
           <div className="grid gap-2 mt-3">
@@ -195,37 +212,45 @@ export default function Products() {
             <select
               className="px-3 py-2 rounded-xl border"
               value={form.categoria}
-              onChange={(e) => setForm(f => ({ ...f, categoria: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, categoria: e.target.value }))
+              }
             >
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              {CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
             </select>
 
             <label className="text-sm text-gray-600">Nombre</label>
             <input
-              className="px-3 py-2 rounded-xl border"
+              className="input w-full"
               value={form.nombre}
-              onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))}
-              placeholder="Ej: Mila pollo casera 1kg"
+              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+              placeholder="Ej: Milanesa de pollo"
             />
 
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-sm text-gray-600">Precio</label>
                 <input
-                  className="w-full px-3 py-2 rounded-xl border"
+                  className="input w-full"
                   inputMode="numeric"
                   value={form.precio}
-                  onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, precio: e.target.value }))
+                  }
                   placeholder="7999"
                 />
               </div>
               <div>
                 <label className="text-sm text-gray-600">Stock</label>
                 <input
-                  className="w-full px-3 py-2 rounded-xl border"
+                  className="input w-full"
                   inputMode="numeric"
                   value={form.stock}
-                  onChange={(e) => setForm(f => ({ ...f, stock: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, stock: e.target.value }))
+                  }
                   placeholder="12"
                 />
               </div>
@@ -233,14 +258,20 @@ export default function Products() {
 
             <label className="text-sm text-gray-600">Imagen URL</label>
             <input
-              className="px-3 py-2 rounded-xl border"
+              className="input w-full"
               value={form.imagenUrl}
-              onChange={(e) => setForm(f => ({ ...f, imagenUrl: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, imagenUrl: e.target.value }))
+              }
               placeholder="https://..."
             />
 
-            {form.imagenUrl?.trim() && (
-              <img src={form.imagenUrl.trim()} alt="preview" className="w-full h-40 object-cover rounded-2xl border bg-gray-100" />
+            {String(form.imagenUrl || "").trim() && (
+              <img
+                src={String(form.imagenUrl).trim()}
+                alt="preview"
+                className="w-full h-40 object-cover rounded-2xl border bg-gray-100"
+              />
             )}
 
             <label className="text-sm text-gray-600">Descripción</label>
@@ -248,7 +279,9 @@ export default function Products() {
               className="px-3 py-2 rounded-xl border"
               rows={3}
               value={form.descripcion}
-              onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, descripcion: e.target.value }))
+              }
               placeholder="Opcional"
             />
 
@@ -256,7 +289,9 @@ export default function Products() {
               <input
                 type="checkbox"
                 checked={form.activo}
-                onChange={(e) => setForm(f => ({ ...f, activo: e.target.checked }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, activo: e.target.checked }))
+                }
               />
               Producto activo
             </label>
@@ -264,69 +299,111 @@ export default function Products() {
             <button
               disabled={saving}
               onClick={save}
-              className={`mt-1 px-4 py-3 rounded-2xl text-white font-semibold ${saving ? "bg-green-600/60" : "bg-green-600"}`}
+              className={`mt-1 px-4 py-3 rounded-2xl text-white font-semibold ${
+                saving ? "bg-green-600/60" : "bg-green-600"
+              }`}
             >
-              Guardar
+              {saving ? "Guardando..." : "Guardar"}
             </button>
 
-            {msg.text && <p className={`text-sm ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</p>}
+            {msg.text && (
+              <p className={`text-sm ${msg.ok ? "text-green-700" : "text-red-700"}`}>
+                {msg.text}
+              </p>
+            )}
           </div>
         </section>
 
         {/* List */}
         <section className="bg-white rounded-2xl shadow-sm border p-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <input
-              className="w-full px-3 py-2 rounded-xl border"
+              className="input w-full"
               placeholder="Buscar..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+
+            {/* Botón flotante tipo "+" (solo mobile) - ocupa poco */}
+            <button
+              onClick={openNewProduct}
+              className="md:hidden relative btn btn-primary px-3"
+              aria-label="Nuevo producto"
+              title="Nuevo producto"
+            >
+              <span className="text-lg leading-none font-black">+</span>
+            </button>
           </div>
 
-          <div className="flex gap-2 overflow-auto py-2">
-            {CATEGORIES.map(c => (
+          <div className="grid grid-cols-4 gap-2 py-2">
+            {CATEGORIES.map((c) => (
               <button
                 key={c}
-                onClick={() => { setActiveCat(c); setForm(f => ({ ...f, categoria: c })); }}
-                className={`px-3 py-2 rounded-xl text-sm border ${c === activeCat ? "bg-gray-900 text-white" : "bg-white"}`}
+                onClick={() => {
+                  setActiveCat(c);
+                  setForm((f) => ({ ...f, categoria: c }));
+                }}
+                className={`px-2 py-2 rounded-xl text-sm border text-center ${
+                  c === activeCat ? "bg-gray-900 text-white" : "bg-white"
+                }`}
               >
                 {c}
               </button>
             ))}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-2">
-            {filtered.map(p => (
-              <button
-                key={p.id}
-                onClick={() => edit(p)}
-                className="text-left border rounded-2xl overflow-hidden hover:shadow-md transition bg-white"
-              >
-                {p.imagenUrl ? (
-                  <img src={p.imagenUrl} alt={p.nombre} className="w-full h-28 object-cover bg-gray-100" />
-                ) : (
-                  <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">Sin imagen</div>
-                )}
-                <div className="p-3 grid gap-1">
-                  <div className="font-semibold leading-tight">{p.nombre}</div>
-                  <div className="text-sm text-gray-700">{money(p.precio)} • Stock {p.stock}</div>
-                  <div className="text-xs text-gray-500">{p.id}</div>
-                </div>
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <div className="text-sm text-gray-600 p-3">No hay productos en esta categoría.</div>
+            {loadingProducts ? (
+              <div className="col-span-full">
+                <Spinner label="Cargando..." />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="col-span-full text-sm text-gray-600 p-3">
+                No hay productos en esta categoría.
+              </div>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => edit(p)}
+                  className="text-left border rounded-2xl overflow-hidden hover:shadow-md transition bg-white"
+                >
+                  {p.imagenUrl ? (
+                    <img
+                      src={p.imagenUrl}
+                      alt={p.nombre}
+                      className="w-full h-28 object-cover max-w-full bg-gray-100"
+                    />
+                  ) : (
+                    <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+                      Sin imagen
+                    </div>
+                  )}
+
+                  <div className="p-3 grid gap-1">
+                    <div className="font-semibold leading-tight">{p.nombre}</div>
+                    <div className="text-sm text-gray-700">
+                      {money(p.precio)} • Stock {p.stock}
+                    </div>
+                    <div className="text-xs text-gray-500">{p.id}</div>
+                  </div>
+                </button>
+              ))
             )}
           </div>
         </section>
       </main>
-      <div className="md:hidden fixed inset-x-0 bottom-0 z-30">
-        <div className="mx-auto max-w-6xl px-3 pb-3">
-          <button className="btn btn-primary w-full py-3" onClick={() => { reset(); }}>
-            Nuevo producto
-          </button>
-        </div>
-      </div>
+
+      {/* FAB "+" (global, fijo abajo a la derecha en mobile) */}
+      <button
+        onClick={openNewProduct}
+        className="md:hidden fixed right-4 bottom-4 z-40 h-14 w-14 rounded-full bg-slate-900 text-white shadow-lg grid place-items-center text-3xl leading-none"
+        aria-label="Nuevo producto"
+        title="Nuevo producto"
+      >
+        +
+      </button>
+
+      {/* Drawer Form (mobile) */}
       <Drawer
         open={formOpen}
         title={form.id ? "Editar producto" : "Nuevo producto"}
@@ -337,8 +414,7 @@ export default function Products() {
               disabled={saving}
               onClick={async () => {
                 const ok = await save();
-                if (ok) 
-                {
+                if (ok) {
                   await sleep(200);
                   setFormOpen(false);
                   setMsg({ text: "", ok: true });
@@ -348,91 +424,100 @@ export default function Products() {
             >
               {saving ? "Guardando..." : "Guardar"}
             </button>
-            {msg.text && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-rose-700"}`}>{msg.text}</p>}
+            {msg.text && (
+              <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-rose-700"}`}>
+                {msg.text}
+              </p>
+            )}
           </div>
         }
       >
-        {/* Pegá acá el contenido del formulario (inputs/select/preview/checkbox), SIN el botón guardar */}
-        {/* O sea: todo menos el botón final */}
-        <div className="flex items-center justify-between">
-            <h2 className="font-semibold">{form.id ? "Editar producto" : "Nuevo producto"}</h2>
-            <button onClick={reset} className="text-sm underline">Nuevo</button>
-          </div>
+        <div className="grid gap-2">
+          <label className="text-sm text-gray-600">Categoría</label>
+          <select
+            className="px-3 py-2 rounded-xl border"
+            value={form.categoria}
+            onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
 
-          <div className="grid gap-2 mt-3">
-            <label className="text-sm text-gray-600">Categoría</label>
-            <select
-              className="px-3 py-2 rounded-xl border"
-              value={form.categoria}
-              onChange={(e) => setForm(f => ({ ...f, categoria: e.target.value }))}
-            >
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-            </select>
+          <label className="text-sm text-gray-600">Nombre</label>
+          <input
+            className="input w-full"
+            value={form.nombre}
+            onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+            placeholder="Ej: Mila pollo casera 1kg"
+          />
 
-            <label className="text-sm text-gray-600">Nombre</label>
-            <input
-              className="px-3 py-2 rounded-xl border"
-              value={form.nombre}
-              onChange={(e) => setForm(f => ({ ...f, nombre: e.target.value }))}
-              placeholder="Ej: Mila pollo casera 1kg"
-            />
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-sm text-gray-600">Precio</label>
-                <input
-                  className="w-full px-3 py-2 rounded-xl border"
-                  inputMode="numeric"
-                  value={form.precio}
-                  onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))}
-                  placeholder="7999"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600">Stock</label>
-                <input
-                  className="w-full px-3 py-2 rounded-xl border"
-                  inputMode="numeric"
-                  value={form.stock}
-                  onChange={(e) => setForm(f => ({ ...f, stock: e.target.value }))}
-                  placeholder="12"
-                />
-              </div>
-            </div>
-
-            <label className="text-sm text-gray-600">Imagen URL</label>
-            <input
-              className="px-3 py-2 rounded-xl border"
-              value={form.imagenUrl}
-              onChange={(e) => setForm(f => ({ ...f, imagenUrl: e.target.value }))}
-              placeholder="https://..."
-            />
-
-            {form.imagenUrl?.trim() && (
-              <img src={form.imagenUrl.trim()} alt="preview" className="w-full h-40 object-cover rounded-2xl border bg-gray-100" />
-            )}
-
-            <label className="text-sm text-gray-600">Descripción</label>
-            <textarea
-              className="px-3 py-2 rounded-xl border"
-              rows={3}
-              value={form.descripcion}
-              onChange={(e) => setForm(f => ({ ...f, descripcion: e.target.value }))}
-              placeholder="Opcional"
-            />
-
-            <label className="flex items-center gap-2 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-sm text-gray-600">Precio</label>
               <input
-                type="checkbox"
-                checked={form.activo}
-                onChange={(e) => setForm(f => ({ ...f, activo: e.target.checked }))}
+                className="input w-full"
+                inputMode="numeric"
+                value={form.precio}
+                onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
+                placeholder="7999"
               />
-              Producto activo
-            </label>            
-            {msg.text && <p className={`text-sm ${msg.ok ? "text-green-700" : "text-red-700"}`}>{msg.text}</p>}
+            </div>
+            <div>
+              <label className="text-sm text-gray-600">Stock</label>
+              <input
+                className="input w-full"
+                inputMode="numeric"
+                value={form.stock}
+                onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                placeholder="12"
+              />
+            </div>
           </div>
-    </Drawer>
-    <Toast show={toast.show} ok={toast.ok} text={toast.text} onClose={hideToast} />
+
+          <label className="text-sm text-gray-600">Imagen URL</label>
+          <input
+            className="input w-full"
+            value={form.imagenUrl}
+            onChange={(e) => setForm((f) => ({ ...f, imagenUrl: e.target.value }))}
+            placeholder="https://..."
+          />
+
+          {String(form.imagenUrl || "").trim() && (
+            <img
+              src={String(form.imagenUrl).trim()}
+              alt="preview"
+              className="w-full h-40 object-cover rounded-2xl border bg-gray-100"
+            />
+          )}
+
+          <label className="text-sm text-gray-600">Descripción</label>
+          <textarea
+            className="px-3 py-2 rounded-xl border"
+            rows={3}
+            value={form.descripcion}
+            onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
+            placeholder="Opcional"
+          />
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.activo}
+              onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
+            />
+            Producto activo
+          </label>
+
+          {msg.text && (
+            <p className={`text-sm ${msg.ok ? "text-green-700" : "text-red-700"}`}>
+              {msg.text}
+            </p>
+          )}
+        </div>
+      </Drawer>
+
+      <Toast show={toast.show} ok={toast.ok} text={toast.text} onClose={hideToast} />
     </div>
   );
 }
