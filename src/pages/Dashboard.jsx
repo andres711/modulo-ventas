@@ -99,6 +99,16 @@ export default function Dashboard() {
     return Object.entries(obj).map(([k, v]) => ({ k, v }));
   }, [summary]);
 
+  function fmtFechaHoraAR(s) {
+    // Espera "yyyy-MM-dd HH:mm:ss"
+    if (!s) return "";
+    const [d, t] = String(s).split(" ");
+    if (!d || !t) return String(s);
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y} ${t}`;
+ }
+
+
   return (
     <div className="grid gap-4">
       <section className="card p-4">
@@ -260,7 +270,7 @@ export default function Dashboard() {
                           {s.productoNombre || s.productoId}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {String(s.fechaHora || "")} • {s.medioPago || "-"} • {s.categoria || "-"}
+                          {String(fmtFechaHoraAR(s.fechaHora) || "")} • {s.medioPago || "-"} • {s.categoria || "-"}
                         </div>
                       </div>
                       <div className="font-bold shrink-0">{money(s.total)}</div>
