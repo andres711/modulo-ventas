@@ -53,6 +53,7 @@ export default function AppLayout() {
               >
                 <option value="/ventas">Ventas</option>
                 <option value="/productos">Productos</option>
+                <option value="/dashboard">Registro Ventas</option>
               </select>
             </div>
           </div>
