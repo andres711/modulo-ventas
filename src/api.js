@@ -47,3 +47,16 @@ export function createSale({ items, medioPago, observacion }) {
     observacion,
   });
 }
+
+export async function getSales({ from, to, categoria } = {}) {
+  const qs = new URLSearchParams({ action: "sales" });
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  if (categoria && categoria !== "Todas") qs.set("categoria", categoria);
+
+  const res = await fetch(`${API_URL}?${qs.toString()}`);
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || "Error cargando ventas");
+  return { sales: json.sales || [], summary: json.summary || {} };
+}
+

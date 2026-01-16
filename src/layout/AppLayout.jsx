@@ -41,6 +41,7 @@ export default function AppLayout() {
             <nav className="hidden sm:flex gap-2">
               <NavItem to="/ventas">Ventas</NavItem>
               <NavItem to="/productos">Productos</NavItem>
+              <NavItem to="/dashboard">Dashboard</NavItem>
             </nav>
 
             {/* Mobile nav (select) */}
