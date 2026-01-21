@@ -2,13 +2,14 @@
   command = "npm run build"
   publish = "dist"
 
+# 🔴 PROXY API (PRIMERO)
 [[redirects]]
   from = "/api"
-  to = "https://script.google.com/macros/s/AKfycbwyKxdj4MNmwlD4NhGY9Wq7LijwiugXGLemzR09MSCdWDyocA3pFBl1GAWaSxbT00eL/exec"
+  to = "https://script.google.com/macros/s/AKfycbxos5-UZqu7QwYhShw5pdbo2sJewfzt6JWyWiePU3vH8iw1WErDyyWw6nNeGkDAI8bS/exec"
   status = 200
   force = true
 
-# SPA fallback (React Router)
+# 🟢 SPA fallback (SEGUNDO)
 [[redirects]]
   from = "/*"
   to = "/index.html"
