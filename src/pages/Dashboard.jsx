@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Spinner from "../components/Spinner";
-import { getSales } from "../api";
+import { getSalesPage } from "../api";
 import Toast from "../components/Toast";
 import { useToast } from "../hooks/useToast";
 
@@ -38,7 +38,10 @@ export default function Dashboard() {
     topProducts: [],
   });
   const [cat, setCat] = useState("Todas");
-
+  const PAGE_SIZE = 50;
+  const [cursor, setCursor] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   function applyPreset(nextRange) {
     const now = new Date();
@@ -66,25 +69,59 @@ export default function Dashboard() {
   async function refresh(pFrom, pTo) {
     setLoading(true);
     try {
-      const { sales, summary } = await getSales({
+        const resp = await getSalesPage({
         from: pFrom,
         to: pTo,
-        categoria: cat
+        categoria: cat,     // tu api.js ya ignora "Todas"
+        size: PAGE_SIZE,
+        cursor: 0,
         });
-      setSales(sales);
-      setSummary(summary);
+
+        setSales(resp.sales);
+        setSummary(resp.summary);
+
+        setCursor(resp.nextCursor ?? 0);
+        setHasMore(resp.hasMore);
     } catch (e) {
-      showToast({ ok: false, text: e.message });
+        showToast({ ok: false, text: e.message });
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   }
+
+  async function loadMore() {
+    if (loadingMore || loading || !hasMore) return;
+    setLoadingMore(true);
+    try {
+        const resp = await getSalesPage({
+        from,
+        to,
+        categoria: cat,
+        size: PAGE_SIZE,
+        cursor,
+        });
+
+        setSales(prev => prev.concat(resp.sales));
+
+        // summary viene calculado sobre TODO el filtrado: podés mantener el de la 1ra página.
+        // Igual lo actualizo por si cambia:
+        if (resp.summary) setSummary(resp.summary);
+
+        setCursor(resp.nextCursor ?? cursor);
+        setHasMore(resp.hasMore);
+    } catch (e) {
+        showToast({ ok: false, text: e.message });
+    } finally {
+        setLoadingMore(false);
+    }
+  }
+
 
   useEffect(() => {
     // al entrar: hoy
     refresh(from, to);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cat]);
 
   // Cuando cambias preset, actualiza fechas pero no refresca hasta que apretás "Aplicar" (más control).
   // Si querés auto-refresh, decime y lo dejo automático.
@@ -262,7 +299,7 @@ export default function Dashboard() {
               <div className="text-sm text-slate-500">No hay ventas en el período.</div>
             ) : (
               <div className="grid gap-2">
-                {sales.slice(0, 30).map((s) => (
+                {sales.map((s) => (
                   <div key={s.id} className="border border-slate-200 rounded-2xl p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -283,7 +320,21 @@ export default function Dashboard() {
               </div>
             )}
           </section>
-        </>
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="text-xs text-slate-500">
+                Mostrando {sales.length} de {summary.count || sales.length} registros
+            </div>
+            {hasMore && (
+                <button
+                className="btn w-full sm:w-auto"
+                onClick={loadMore}
+                disabled={loadingMore}
+                >
+                {loadingMore ? "Cargando..." : "Cargar más"}
+                </button>
+            )}
+            </div>
+        </>        
       )}
 
       <Toast show={toast.show} ok={toast.ok} text={toast.text} onClose={hideToast} />

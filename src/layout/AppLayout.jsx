@@ -19,8 +19,10 @@ export default function AppLayout() {
   const navigate = useNavigate();
 
   // Detectar ruta actual para el select en mobile
-  const current =
-    location.pathname.startsWith("/productos") ? "/productos" : "/ventas";
+  const tabs = ["/ventas", "/productos", "/dashboard"];
+  const current = tabs.find(t => location.pathname.startsWith(t)) || "/ventas";
+
+
 
   return (
     <div className="min-h-screen bg-slate-50 overflow-x-hidden">
