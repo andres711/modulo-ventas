@@ -4,16 +4,80 @@
 
 @layer base {
   html, body { height: 100%; }
-  body { @apply bg-slate-50 text-slate-900 antialiased; }
+  body { @apply bg-slate-50 text-slate-900 antialiased transition-colors dark:bg-slate-950 dark:text-slate-100; }
 }
 
 @layer components {
-  .card { @apply bg-white border border-slate-200 rounded-2xl shadow-sm; }
-  .btn { @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium bg-white hover:bg-slate-50 active:scale-[0.99] transition; }
-  .btn-primary { @apply bg-slate-900 text-white border-slate-900 hover:bg-slate-800; }
-  .btn-danger { @apply bg-rose-600 text-white border-rose-600 hover:bg-rose-500; }
-  .input { @apply w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-slate-200; }
+  .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-slate-950/40; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium transition active:scale-[0.99] hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800; }
+  .btn-primary { @apply border-slate-300 bg-slate-100 text-slate-950 hover:bg-slate-200 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200; }
+  .btn-danger { @apply border-slate-300 bg-slate-100 text-slate-950 hover:bg-slate-200 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200; }
+  .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-slate-700; }
   .badge { @apply text-xs px-2 py-1 rounded-full; }
+}
+
+@layer utilities {
+  #root[data-theme="light"] .text-slate-300,
+  #root[data-theme="light"] .text-slate-400 {
+    color: rgb(51 65 85) !important;
+  }
+
+  #root[data-theme="light"] .text-slate-500,
+  #root[data-theme="light"] .text-slate-600 {
+    color: rgb(30 41 59) !important;
+  }
+
+  #root[data-theme="light"] .text-slate-700,
+  #root[data-theme="light"] .text-slate-800,
+  #root[data-theme="light"] .text-slate-900 {
+    color: rgb(15 23 42) !important;
+  }
+
+  #root[data-theme="light"] .bg-white\/80,
+  #root[data-theme="light"] .bg-white\/85,
+  #root[data-theme="light"] .bg-white\/90 {
+    background-color: rgb(255 255 255) !important;
+  }
+
+  #root[data-theme="light"] .bg-slate-50,
+  #root[data-theme="light"] .bg-slate-100,
+  #root[data-theme="light"] .bg-slate-100\/80,
+  #root[data-theme="light"] .bg-slate-50\/95 {
+    background-color: rgb(248 250 252) !important;
+  }
+
+  #root[data-theme="light"] .border-slate-200,
+  #root[data-theme="light"] .border-slate-300 {
+    border-color: rgb(203 213 225) !important;
+  }
+
+  #root[data-theme="light"] .bg-slate-900,
+  #root[data-theme="light"] .bg-slate-950,
+  #root[data-theme="light"] .dark\:bg-slate-100 {
+    background-color: rgb(241 245 249) !important;
+  }
+
+  #root[data-theme="light"] .text-white,
+  #root[data-theme="light"] .dark\:text-slate-950 {
+    color: rgb(15 23 42) !important;
+  }
+
+  #root[data-theme="light"] .border-slate-900,
+  #root[data-theme="light"] .dark\:border-slate-100 {
+    border-color: rgb(203 213 225) !important;
+  }
+
+  #root[data-theme="light"] .hover\:bg-slate-800:hover,
+  #root[data-theme="light"] .hover\:bg-slate-900:hover,
+  #root[data-theme="light"] .dark\:hover\:bg-slate-200:hover {
+    background-color: rgb(226 232 240) !important;
+  }
+
+  #root[data-theme="light"] .dark\:shadow-slate-950\/40,
+  #root[data-theme="light"] .dark\:shadow-slate-950\/50,
+  #root[data-theme="light"] .dark\:shadow-slate-950\/30 {
+    --tw-shadow-color: rgb(148 163 184 / 0.15) !important;
+  }
 }
 
 .app-spinner {
@@ -23,6 +87,11 @@
   border-top-color: #0f172a;       /* slate-900 */
   border-radius: 9999px;
   animation: appSpin 0.8s linear infinite;
+}
+
+.dark .app-spinner {
+  border-color: #334155;
+  border-top-color: #f8fafc;
 }
 
 @keyframes appSpin {

@@ -1,4 +1,30 @@
-export default function Drawer({ open, title, onClose, children, footer }) {
+import { useEffect, useRef } from "react";
+
+export default function Drawer({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  cardClassName = "",
+  headerClassName = "",
+  bodyClassName = "",
+  footerClassName = "",
+}) {
+  const bodyRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      bodyRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [open]);
+
   return (
     <>
       {/* Backdrop */}
@@ -28,9 +54,9 @@ export default function Drawer({ open, title, onClose, children, footer }) {
           onClick={(e) => e.stopPropagation()} // evita cerrar al clickear dentro
         >
           {/* Card */}
-          <div className="card overflow-hidden max-h-[85vh] flex flex-col">
+          <div className={`card overflow-hidden max-h-[85vh] flex flex-col ${cardClassName}`}>
             {/* Header fijo */}
-            <div className="flex items-center justify-between gap-2 p-4 border-b border-slate-200 bg-white">
+            <div className={`flex items-center justify-between gap-2 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 ${headerClassName}`}>
               <div className="font-bold truncate">{title}</div>
               <button className="btn shrink-0" onClick={onClose}>
                 Cerrar
@@ -38,13 +64,13 @@ export default function Drawer({ open, title, onClose, children, footer }) {
             </div>
 
             {/* Body scrolleable */}
-            <div className="flex-1 overflow-auto p-4">
+            <div ref={bodyRef} className={`flex-1 overflow-auto p-4 ${bodyClassName}`}>
               {children}
             </div>
 
             {/* Footer fijo */}
             {footer ? (
-              <div className="border-t border-slate-200 bg-white p-4">
+              <div className={`border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 ${footerClassName}`}>
                 {footer}
               </div>
             ) : null}

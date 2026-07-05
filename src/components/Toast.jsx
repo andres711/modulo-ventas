@@ -1,4 +1,10 @@
-export default function Toast({ show, ok = true, text = "", onClose }) {
+export default function Toast({
+  show,
+  text = "",
+  actionLabel = "",
+  onAction = null,
+  onClose,
+}) {
   return (
     <div
       className={[
@@ -14,13 +20,28 @@ export default function Toast({ show, ok = true, text = "", onClose }) {
         className={[
           "card px-4 py-3",
           "shadow-md",
-          ok ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50",
+          "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
         ].join(" ")}
       >
-        <div className={["text-sm font-semibold", ok ? "text-emerald-800" : "text-rose-800"].join(" ")}>
+        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           {text}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">Tocá para cerrar</div>
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            className={[
+              "mt-2 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition",
+              "border border-slate-300 bg-slate-100 text-slate-950 hover:bg-slate-200 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200",
+            ].join(" ")}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction();
+            }}
+          >
+            {actionLabel}
+          </button>
+        ) : null}
+        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Tocá para cerrar</div>
       </div>
     </div>
   );

@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.js'],
+  },
   server: {
     proxy: {
       '/api': {
@@ -11,7 +15,7 @@ export default defineConfig({
         rewrite: (path) =>
           path.replace(
             /^\/api/,
-            '/macros/s/AKfycbxos5-UZqu7QwYhShw5pdbo2sJewfzt6JWyWiePU3vH8iw1WErDyyWw6nNeGkDAI8bS/exec'
+            '/macros/s/AKfycbywvwt7ceQAN-q9F7y5g4QQ1i7znUk85-UsYJxszUZNKoqg9KSBSDBv6VWXv2RaP-pE/exec'
           ),
       },
     },

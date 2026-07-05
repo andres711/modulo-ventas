@@ -1,71 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import Drawer from "../components/Drawer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ProductFormDrawer from "../components/products/ProductFormDrawer";
+import ProductGrid from "../components/products/ProductGrid";
+import {
+  DEFAULT_PRODUCT_CATEGORY,
+  DEFAULT_PRODUCT_UNIT,
+  PRODUCT_CATEGORIES,
+  PRODUCT_UNITS,
+} from "../entities/product/constants";
 import Toast from "../components/Toast";
-import Spinner from "../components/Spinner";
+import { deleteProduct, getProducts, upsertProduct } from "../features/products/api";
+import { uploadProductImage } from "../features/products/uploadProductImage";
 import { useToast } from "../hooks/useToast";
-import { uploadToCloudinary } from "../uploadCloudinary";
-
-const CATEGORIES = ["Polleria", "Congelados", "Almacen", "Bebidas"];
-const UNITS = ["UN", "KG"];
-
-const money = (n) =>
-  Number(n || 0).toLocaleString("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 0,
-  });
-
-const API_URL = import.meta.env.VITE_API_URL;
-
-async function apiGetProducts() {
-  const res = await fetch(`${API_URL}?action=products`);
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || "Error cargando productos");
-
-  return (json.products || [])
-    .map((p) => ({
-      ...p,
-      id: String(p.id || "").trim(),
-      categoria: String(p.categoria || "").trim(),
-      nombre: String(p.nombre || "").trim(),
-      descripcion: String(p.descripcion || "").trim(),
-      imagenUrl: String(p.imagenUrl || "").trim(),
-      unidad: String(p.unidad || "UN").toUpperCase().trim(),
-      precio: Number(p.precio || 0),
-      costo: p.costo === "" || p.costo === null || p.costo === undefined ? "" : Number(p.costo || 0),
-      stock: Number(p.stock || 0),
-      activo: String(p.activo || "TRUE").toUpperCase() !== "FALSE",
-    }))
-    .filter((p) => p.id);
-}
-
-async function apiUpsertProduct(row) {
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action: "product_upsert", row }),
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || "Error guardando producto");
-  return json;
-}
-
-async function apiDeleteProduct(id) {
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ action: "product_delete", id }),
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || "Error eliminando producto");
-  return json;
-}
-
+import { sleep, vibrate } from "../lib/ui";
 
 export default function Products() {
   const { toast, showToast, hideToast } = useToast();
+  const searchInputRef = useRef(null);
+  const productButtonRefs = useRef(new Map());
   const [products, setProducts] = useState([]);
-  const [activeCat, setActiveCat] = useState("Polleria");
+  const [activeCat, setActiveCat] = useState(DEFAULT_PRODUCT_CATEGORY);
   const [search, setSearch] = useState("");
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,11 +27,11 @@ export default function Products() {
   const [msg, setMsg] = useState({ text: "", ok: true });
   const [form, setForm] = useState({
     id: "",
-    categoria: "Polleria",
+    categoria: DEFAULT_PRODUCT_CATEGORY,
     nombre: "",
     precio: "",
     costo: "",
-    unidad: "UN",
+    unidad: DEFAULT_PRODUCT_UNIT,
     stock: "",
     imagenUrl: "",
     descripcion: "",
@@ -87,36 +40,27 @@ export default function Products() {
 
   const fileInputRef = useRef(null);
 
-  function vibrate(ms = 40) {
-    try {
-      if (navigator?.vibrate) navigator.vibrate(ms);
-    } catch (e) {
-      e;
-    }
-  }
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoadingProducts(true);
     try {
-      const p = await apiGetProducts();
+      const p = await getProducts({ includeInactive: true });
       setProducts(p);
     } catch (e) {
       showToast({ ok: false, text: e.message });
     } finally {
       setLoadingProducts(false);
     }
-  }
+  }, [showToast]);
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return products
-      .filter((p) => p.categoria === activeCat)
+      .filter((p) => (q ? true : p.categoria === activeCat))
       .filter((p) => {
         if (!q) return true;
         const name = (p.nombre || "").toLowerCase();
@@ -126,6 +70,181 @@ export default function Products() {
       });
   }, [products, activeCat, search]);
 
+  const isGlobalSearch = search.trim().length > 0;
+
+  const focusSearch = useCallback(() => {
+    requestAnimationFrame(() => {
+      const input = searchInputRef.current;
+      if (!input) return;
+
+      input.scrollIntoView({ block: "center", behavior: "smooth" });
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+  }, []);
+
+  const clearAndFocusSearch = useCallback(() => {
+    setSearch("");
+    focusSearch();
+  }, [focusSearch]);
+
+  const closeForm = useCallback(() => {
+    setFormOpen(false);
+  }, []);
+
+  const handleEscapeAction = useCallback(() => {
+    if (formOpen) {
+      closeForm();
+      return;
+    }
+
+    clearAndFocusSearch();
+  }, [clearAndFocusSearch, closeForm, formOpen]);
+
+  useEffect(() => {
+    function handleWindowKeyDown(e) {
+      if (e.key !== "Escape") return;
+
+      e.preventDefault();
+      handleEscapeAction();
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [handleEscapeAction]);
+
+  function getFocusableProductButtons() {
+    return filtered
+      .map((product) => ({
+        id: product.id,
+        element: productButtonRefs.current.get(product.id),
+      }))
+      .filter((item) => item.element);
+  }
+
+  function getGridRows() {
+    const buttons = getFocusableProductButtons();
+    const rows = [];
+    const tolerance = 8;
+
+    for (const button of buttons) {
+      const top = button.element.offsetTop;
+      const lastRow = rows[rows.length - 1];
+
+      if (!lastRow || Math.abs(lastRow.top - top) > tolerance) {
+        rows.push({ top, items: [button] });
+        continue;
+      }
+
+      lastRow.items.push(button);
+    }
+
+    return rows;
+  }
+
+  function focusProductButton(productId) {
+    const button = productButtonRefs.current.get(productId);
+    if (!button) return;
+
+    requestAnimationFrame(() => {
+      button.focus();
+      button.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }
+
+  function moveCatalogFocus(currentProductId, direction) {
+    const rows = getGridRows();
+    if (rows.length === 0) return;
+
+    const rowIndex = rows.findIndex((row) =>
+      row.items.some((item) => item.id === currentProductId)
+    );
+    if (rowIndex < 0) return;
+
+    const colIndex = rows[rowIndex].items.findIndex((item) => item.id === currentProductId);
+    if (colIndex < 0) return;
+
+    let nextId = null;
+
+    if (direction === "left" && colIndex > 0) {
+      nextId = rows[rowIndex].items[colIndex - 1].id;
+    }
+
+    if (direction === "right" && colIndex < rows[rowIndex].items.length - 1) {
+      nextId = rows[rowIndex].items[colIndex + 1].id;
+    }
+
+    if (direction === "up" && rowIndex > 0) {
+      const nextRow = rows[rowIndex - 1].items;
+      nextId = nextRow[Math.min(colIndex, nextRow.length - 1)].id;
+    }
+
+    if (direction === "down" && rowIndex < rows.length - 1) {
+      const nextRow = rows[rowIndex + 1].items;
+      nextId = nextRow[Math.min(colIndex, nextRow.length - 1)].id;
+    }
+
+    if (nextId) {
+      focusProductButton(nextId);
+    }
+  }
+
+  function focusFirstVisibleProduct() {
+    const firstProduct = filtered[0];
+    if (!firstProduct) return;
+    focusProductButton(firstProduct.id);
+  }
+
+  function handleSearchKeyDown(e) {
+    if (e.key !== "ArrowDown") return;
+    if (filtered.length === 0) return;
+
+    e.preventDefault();
+    focusFirstVisibleProduct();
+  }
+
+  function handleCatalogKeyDownCapture(e) {
+    if (e.key !== "Escape") return;
+
+    const productButton = e.target.closest?.('[data-catalog-product="true"]');
+    if (!productButton) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    handleEscapeAction();
+  }
+
+  function handleProductKeyDown(e, productId) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      handleEscapeAction();
+      return;
+    }
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      moveCatalogFocus(productId, "left");
+    }
+
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      moveCatalogFocus(productId, "right");
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveCatalogFocus(productId, "up");
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveCatalogFocus(productId, "down");
+    }
+  }
+
   function openNew() {
     setMsg({ text: "", ok: true });
     setForm({
@@ -134,7 +253,7 @@ export default function Products() {
       nombre: "",
       precio: "",
       costo: "",
-      unidad: "UN",
+      unidad: DEFAULT_PRODUCT_UNIT,
       stock: "",
       imagenUrl: "",
       descripcion: "",
@@ -144,13 +263,17 @@ export default function Products() {
   }
 
   function openEdit(p) {
+    const rawPrice = Number(p.precio);
+    const rawCost = Number(p.costo);
+
     setMsg({ text: "", ok: true });
     setForm({
       id: p.id,
       categoria: p.categoria,
       nombre: p.nombre,
-      precio: String(p.precio ?? ""),
-      costo: p.costo === "" ? "" : String(p.costo ?? ""),
+      precio: Number.isFinite(rawPrice) ? String(Math.round(rawPrice)) : "",
+      costo:
+        p.costo === "" ? "" : Number.isFinite(rawCost) ? String(Math.round(rawCost)) : String(p.costo ?? ""),
       unidad: String(p.unidad || "UN").toUpperCase(),
       stock: String(p.stock ?? ""),
       imagenUrl: p.imagenUrl || "",
@@ -158,6 +281,10 @@ export default function Products() {
       activo: !!p.activo,
     });
     setFormOpen(true);
+  }
+
+  function updateFormField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
   }
 
   async function save() {
@@ -174,19 +301,21 @@ export default function Products() {
       return false;
     }
 
-    const precio = Number(String(form.precio).replace(",", "."));
+    const precioRaw = Number(String(form.precio).replace(",", "."));
+    const precio = Math.round(precioRaw);
     const stock = Number(String(form.stock).replace(",", "."));
     const costoRaw = String(form.costo ?? "").trim();
-    const costo = costoRaw === "" ? undefined : Number(costoRaw.replace(",", "."));
+    const costoParsed = costoRaw === "" ? undefined : Number(costoRaw.replace(",", "."));
+    const costo = costoParsed === undefined ? undefined : Math.round(costoParsed);
     const unidad = String(form.unidad || "UN").toUpperCase().trim();
 
-    if (!UNITS.includes(unidad)) {
+    if (!PRODUCT_UNITS.includes(unidad)) {
       setMsg({ text: "Unidad inválida", ok: false });
       showToast({ ok: false, text: "Unidad inválida" });
       vibrate(60);
       return false;
     }
-    if (!Number.isFinite(precio) || precio < 0) {
+    if (!Number.isFinite(precioRaw) || precioRaw < 0) {
       setMsg({ text: "Precio inválido", ok: false });
       showToast({ ok: false, text: "Precio inválido" });
       vibrate(60);
@@ -198,7 +327,7 @@ export default function Products() {
       vibrate(60);
       return false;
     }
-    if (costo !== undefined && (!Number.isFinite(costo) || costo < 0)) {
+    if (costoParsed !== undefined && (!Number.isFinite(costoParsed) || costoParsed < 0)) {
       setMsg({ text: "Costo inválido", ok: false });
       showToast({ ok: false, text: "Costo inválido" });
       vibrate(60);
@@ -208,7 +337,7 @@ export default function Products() {
     setSaving(true);
 
     try {
-      await apiUpsertProduct({
+      await upsertProduct({
         id: form.id || undefined,
         categoria: form.categoria,
         nombre: form.nombre.trim(),
@@ -243,7 +372,7 @@ export default function Products() {
 
     try {
       setUploadingImg(true);
-      const up = await uploadToCloudinary(file);
+      const up = await uploadProductImage(file);
       setForm((f) => ({ ...f, imagenUrl: up.url }));
       showToast({ ok: true, text: "Imagen subida ✅" });
       vibrate(20);
@@ -256,17 +385,46 @@ export default function Products() {
     }
   }
 
+  async function saveAndClose() {
+    const ok = await save();
+    if (!ok) return;
+
+    await sleep(200);
+    setFormOpen(false);
+    setMsg({ text: "", ok: true });
+  }
+
+  async function deleteAndClose() {
+    const sure = window.confirm(`¿Eliminar "${form.nombre}"?`);
+    if (!sure) return;
+
+    setSaving(true);
+    try {
+      await deleteProduct(form.id);
+      showToast({ ok: true, text: "Producto eliminado ✅" });
+      vibrate(25);
+      await refresh();
+      await sleep(150);
+      setFormOpen(false);
+    } catch (e) {
+      showToast({ ok: false, text: e.message });
+      vibrate(80);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-6xl mx-auto px-3 pb-20 md:pb-6">
-        {/* 🔒 Sticky toolbar debajo del header fijo (AppLayout usa pt-20) */}
-        <div className="sticky top-20 z-30 -mx-3 px-3 pt-3 pb-2 bg-slate-50/90 backdrop-blur border-b border-slate-200">
-          <section className="card p-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="mx-auto max-w-[110rem] px-3 pb-20 md:pb-6">
+        {/* En mobile compensa el header fijo; en desktop queda alineado al shell */}
+        <div className="sticky top-20 z-30 -mx-3 border-b border-slate-200 bg-slate-50/90 px-3 pb-2 pt-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 lg:top-6">
+          <section className="card p-4" onKeyDownCapture={handleCatalogKeyDownCapture}>
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-lg font-bold">Productos</div>
-                <div className="text-xs text-slate-500">
-                  Buscá por nombre o ID. Tocá para editar. “+” para crear.
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Buscá por nombre o ID. Tocá para editar. Flechas para recorrer. “+” para crear.
                 </div>
               </div>
 
@@ -290,22 +448,31 @@ export default function Products() {
               <input
                 className="input"
                 placeholder="Buscar por nombre o ID..."
+                ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
               />
 
+              {isGlobalSearch ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                  Búsqueda global activa. Se están mostrando resultados de todas las categorías.
+                </div>
+              ) : null}
+
               {/* Categorías: 3 por fila como Sales */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {CATEGORIES.map((c) => (
+              <div className={`grid grid-cols-3 gap-2 transition sm:grid-cols-4 ${isGlobalSearch ? "opacity-60" : "opacity-100"}`}>
+                {PRODUCT_CATEGORIES.map((c) => (
                   <button
                     key={c}
                     onClick={() => {
                       setActiveCat(c);
-                      setForm((f) => ({ ...f, categoria: c }));
-                    }}
+                        setForm((f) => ({ ...f, categoria: c }));
+                      }}
                     className={`btn px-2 py-2 leading-tight min-h-[44px] whitespace-normal break-words ${
                       c === activeCat ? "btn-primary" : ""
                     }`}
+                    title={isGlobalSearch ? "La búsqueda actual recorre todas las categorías" : undefined}
                   >
                     {c}
                   </button>
@@ -317,256 +484,31 @@ export default function Products() {
 
         {/* Lista */}
         <section className="mt-4 card p-4">
-          {loadingProducts ? (
-            <Spinner label="Cargando productos..." />
-          ) : filtered.length === 0 ? (
-            <div className="card p-4 bg-slate-50 border-slate-200">
-              <div className="font-semibold">No hay productos</div>
-              <div className="text-sm text-slate-600">
-                Probá otra categoría o creá uno con “+”.
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {filtered.map((p) => {
-                const isKg = String(p.unidad || "UN").toUpperCase() === "KG";
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => openEdit(p)}
-                    className="card overflow-hidden text-left hover:shadow-md transition active:scale-[0.99]"
-                  >
-                    {p.imagenUrl ? (
-                      <img
-                        src={p.imagenUrl}
-                        alt={p.nombre}
-                        className="w-full h-28 object-cover bg-slate-100"
-                      />
-                    ) : (
-                      <div className="w-full h-28 bg-slate-100 flex items-center justify-center text-slate-400 text-sm">
-                        Sin imagen
-                      </div>
-                    )}
-
-                    <div className="p-3 grid gap-1">
-                      <div className="font-semibold leading-tight line-clamp-2">
-                        {p.nombre}
-                      </div>
-                      <div className="text-sm text-slate-700">
-                        {money(p.precio)} {isKg ? "/ kg" : ""} • Stock {p.stock}
-                        {isKg ? " kg" : ""}
-                      </div>
-                      <div className="text-xs text-slate-500">ID: {p.id}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <ProductGrid
+            loading={loadingProducts}
+            products={filtered}
+            onEdit={openEdit}
+            productButtonRefs={productButtonRefs}
+            onProductKeyDown={handleProductKeyDown}
+            showCategory={isGlobalSearch}
+          />
         </section>
 
-        {/* Drawer: alta/edición */}
-        <Drawer
+        <ProductFormDrawer
           open={formOpen}
-          title={form.id ? "Editar producto" : "Nuevo producto"}
-          onClose={() => setFormOpen(false)}
-          footer={
-          <div className="grid gap-2">
-            <button
-              disabled={saving}
-              onClick={async () => {
-                const ok = await save();
-                if (ok) {
-                  await sleep(200);
-                  setFormOpen(false);
-                  setMsg({ text: "", ok: true });
-                }
-              }}
-              className={`btn btn-primary w-full py-3 ${saving ? "opacity-70" : ""}`}
-            >
-              {saving ? "Guardando..." : "Guardar"}
-            </button>
-
-            {/* ✅ Eliminar SOLO si es edición */}
-            {form.id && (
-              <button
-                disabled={saving}
-                onClick={async () => {
-                  const sure = window.confirm(`¿Eliminar "${form.nombre}"?`);
-                  if (!sure) return;
-
-                  setSaving(true);
-                  try {
-                    await apiDeleteProduct(form.id);
-                    showToast({ ok: true, text: "Producto eliminado ✅" });
-                    vibrate(25);
-                    await refresh();
-                    await sleep(150);
-                    setFormOpen(false);
-                  } catch (e) {
-                    showToast({ ok: false, text: e.message });
-                    vibrate(80);
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                className="btn btn-danger w-full py-3"
-              >
-                Eliminar
-              </button>
-            )}
-
-            {msg.text && (
-              <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-rose-700"}`}>
-                {msg.text}
-              </p>
-            )}
-          </div>
-        }
-
-        >
-          <div className="grid gap-2">
-            {/* ID */}
-            <label className="text-sm text-slate-600">ID (opcional)</label>
-            <input
-              className="input"
-              value={form.id}
-              onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
-              placeholder="Ej: 111 o P-AB12CD34"
-            />
-
-            {/* Categoría */}
-            <label className="text-sm text-slate-600">Categoría</label>
-            <select
-              className="input"
-              value={form.categoria}
-              onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-
-            {/* Nombre */}
-            <label className="text-sm text-slate-600">Nombre</label>
-            <input
-              className="input"
-              value={form.nombre}
-              onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
-              placeholder="Ej: Milanesa pechuga"
-            />
-
-            {/* Unidad */}
-            <label className="text-sm text-slate-600">Unidad</label>
-            <select
-              className="input"
-              value={form.unidad}
-              onChange={(e) => setForm((f) => ({ ...f, unidad: e.target.value }))}
-            >
-              {UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-
-            {/* Precio / Stock */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-sm text-slate-600">Precio</label>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={form.precio}
-                  onChange={(e) => setForm((f) => ({ ...f, precio: e.target.value }))}
-                  placeholder="7999"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-600">
-                  Stock {String(form.unidad || "UN").toUpperCase() === "KG" ? "(kg)" : ""}
-                </label>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={form.stock}
-                  onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
-                  placeholder="12"
-                />
-              </div>
-            </div>
-
-            {/* Costo (opcional) */}
-            <label className="text-sm text-slate-600">Costo (opcional)</label>
-            <input
-              className="input"
-              inputMode="numeric"
-              value={form.costo}
-              onChange={(e) => setForm((f) => ({ ...f, costo: e.target.value }))}
-              placeholder="Ej: 5200"
-            />
-
-            {/* Subir foto */}
-            <label className="text-sm text-slate-600">Foto del producto</label>
-            <div className="flex items-center gap-2">
-              <label className={`btn ${uploadingImg ? "opacity-70 pointer-events-none" : ""}`}>
-                {uploadingImg ? "Subiendo..." : "Subir foto"}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={onPickImage}
-                />
-              </label>
-              <span className="text-xs text-slate-500">Cámara o archivo</span>
-            </div>
-
-            {/* URL */}
-            <label className="text-sm text-slate-600">Imagen URL</label>
-            <input
-              className="input"
-              value={form.imagenUrl}
-              onChange={(e) => setForm((f) => ({ ...f, imagenUrl: e.target.value }))}
-              placeholder="https://..."
-            />
-
-            {String(form.imagenUrl || "").trim() && (
-              <img
-                src={String(form.imagenUrl).trim()}
-                alt="preview"
-                className="w-full h-40 object-cover rounded-2xl border bg-slate-100"
-              />
-            )}
-
-            {/* Descripción */}
-            <label className="text-sm text-slate-600">Descripción</label>
-            <textarea
-              className="input"
-              rows={3}
-              value={form.descripcion}
-              onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))}
-              placeholder="Opcional"
-            />
-
-            {/* Activo */}
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={!!form.activo}
-                onChange={(e) => setForm((f) => ({ ...f, activo: e.target.checked }))}
-              />
-              Producto activo
-            </label>
-
-            {msg.text && (
-              <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-rose-700"}`}>
-                {msg.text}
-              </p>
-            )}
-          </div>
-        </Drawer>
+          form={form}
+          categories={PRODUCT_CATEGORIES}
+          units={PRODUCT_UNITS}
+          saving={saving}
+          uploadingImg={uploadingImg}
+          msg={msg}
+          fileInputRef={fileInputRef}
+          onClose={closeForm}
+          onSave={saveAndClose}
+          onDelete={deleteAndClose}
+          onPickImage={onPickImage}
+          onFormChange={updateFormField}
+        />
 
         <Toast show={toast.show} ok={toast.ok} text={toast.text} onClose={hideToast} />
       </div>

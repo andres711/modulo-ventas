@@ -5,13 +5,13 @@
 # API proxy (cubre /api y /api/*)
 [[redirects]]
   from = "/api"
-  to = "https://script.google.com/macros/s/AKfycbxos5-UZqu7QwYhShw5pdbo2sJewfzt6JWyWiePU3vH8iw1WErDyyWw6nNeGkDAI8bS/exec"
+  to = "https://script.google.com/macros/s/AKfycbywvwt7ceQAN-q9F7y5g4QQ1i7znUk85-UsYJxszUZNKoqg9KSBSDBv6VWXv2RaP-pE/exec"
   status = 200
   force = true
 
 [[redirects]]
   from = "/api/*"
-  to = "https://script.google.com/macros/s/AKfycbxos5-UZqu7QwYhShw5pdbo2sJewfzt6JWyWiePU3vH8iw1WErDyyWw6nNeGkDAI8bS/exec"
+  to = "https://script.google.com/macros/s/AKfycbywvwt7ceQAN-q9F7y5g4QQ1i7znUk85-UsYJxszUZNKoqg9KSBSDBv6VWXv2RaP-pE/exec"
   status = 200
   force = true
 
