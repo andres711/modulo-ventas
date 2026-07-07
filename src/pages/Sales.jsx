@@ -19,6 +19,7 @@ import { sleep, vibrate } from "../lib/ui";
 
 const QUICK_MODE_STORAGE_KEY = "sales.quickMode";
 const QUICK_MODE_HELP_SEEN_STORAGE_KEY = "sales.quickModeHelpSeen";
+const QUICK_MODE_HELP_OPEN_STORAGE_KEY = "sales.quickModeHelpOpen";
 const QUICK_MODE_DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[2];
 
 function getInitialQuickMode() {
@@ -29,6 +30,17 @@ function getInitialQuickMode() {
 function hasSeenQuickModeHelp() {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(QUICK_MODE_HELP_SEEN_STORAGE_KEY) === "true";
+}
+
+function getInitialQuickModeHelpOpen() {
+  if (typeof window === "undefined") return false;
+
+  const savedValue = window.localStorage.getItem(QUICK_MODE_HELP_OPEN_STORAGE_KEY);
+  if (savedValue === null) {
+    return getInitialQuickMode();
+  }
+
+  return savedValue === "true";
 }
 
 function markQuickModeHelpAsSeen() {
@@ -61,7 +73,7 @@ export default function Sales() {
   // Sale meta
   const [msg, setMsg] = useState({ text: "", ok: true });
   const [quickMode, setQuickMode] = useState(getInitialQuickMode);
-  const [quickModeHelpOpen, setQuickModeHelpOpen] = useState(getInitialQuickMode);
+  const [quickModeHelpOpen, setQuickModeHelpOpen] = useState(getInitialQuickModeHelpOpen);
   const [quickModeCheckoutExpanded, setQuickModeCheckoutExpanded] = useState(false);
 
   // Saving sale
@@ -109,15 +121,13 @@ export default function Sales() {
       setQuickModeCheckoutExpanded(false);
 
       if (!nextQuickMode) {
-        setQuickModeHelpOpen(false);
         showToast({ ok: true, text: "Caja rapida desactivada" });
         return;
       }
 
-      setQuickModeHelpOpen(true);
-
       if (!hasSeenQuickModeHelp()) {
         markQuickModeHelpAsSeen();
+        setQuickModeHelpOpen(true);
         showToast({
           ok: true,
           text: "Caja rapida activada. Alt+Enter confirma y Alt+1/2/3 cambia el cobro.",
@@ -215,6 +225,11 @@ export default function Sales() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(QUICK_MODE_STORAGE_KEY, String(quickMode));
   }, [quickMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(QUICK_MODE_HELP_OPEN_STORAGE_KEY, String(quickModeHelpOpen));
+  }, [quickModeHelpOpen]);
 
   useEffect(() => {
     if (!quickMode) return;

@@ -86,7 +86,7 @@ export default function SalesCatalogPanel({
             className={[
               "rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition",
               quickMode
-                ? "border-slate-300 bg-slate-100 text-slate-950 hover:bg-slate-200 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+                ? "border-emerald-300 bg-emerald-100 text-emerald-950 hover:bg-emerald-200 dark:border-emerald-300 dark:bg-emerald-100 dark:text-emerald-950 dark:hover:bg-emerald-200"
                 : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
             ].join(" ")}
           >
