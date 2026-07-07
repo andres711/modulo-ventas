@@ -30,6 +30,9 @@ export default function SalesMobileCartDrawer({
   togglePaymentMethod,
   setPaymentAmount,
   setObs,
+  quickMode,
+  quickModeExpanded,
+  onToggleQuickModeExpanded,
 }) {
   return (
     <Drawer
@@ -97,6 +100,9 @@ export default function SalesMobileCartDrawer({
             paymentDrafts={paymentDrafts}
             paymentMethodOrder={paymentOrder}
             obs={obs}
+            quickMode={quickMode}
+            quickModeExpanded={quickModeExpanded}
+            onToggleQuickModeExpanded={onToggleQuickModeExpanded}
             paymentDifference={paymentDifference}
             onTogglePaymentMethod={togglePaymentMethod}
             onPaymentAmountChange={setPaymentAmount}

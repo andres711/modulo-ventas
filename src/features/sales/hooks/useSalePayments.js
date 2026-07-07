@@ -129,6 +129,23 @@ export function useSalePayments(total) {
     [applyAutoPaymentDrafts, paymentOrder]
   );
 
+  const selectSinglePaymentMethod = useCallback(
+    (method) => {
+      const nextOrder = [method];
+
+      setPaymentOrder(nextOrder);
+      setPaymentDrafts(() => {
+        const next = {
+          ...createInitialPaymentDrafts(),
+          [method]: "",
+        };
+
+        return applyAutoPaymentDrafts(next, nextOrder);
+      });
+    },
+    [applyAutoPaymentDrafts]
+  );
+
   const resetPayments = useCallback(() => {
     setPaymentDrafts(createInitialPaymentDrafts());
     setPaymentOrder(createInitialPaymentOrder());
@@ -144,6 +161,7 @@ export function useSalePayments(total) {
     paymentDifference,
     togglePaymentMethod,
     setPaymentAmount,
+    selectSinglePaymentMethod,
     resetPayments,
   };
 }

@@ -31,8 +31,101 @@ export default function SalesCatalogPanel({
   productButtonRefs,
   addToCart,
   onProductKeyDown,
+  quickMode,
+  onQuickModeChange,
+  quickModeHelpOpen,
+  onToggleQuickModeHelp,
 }) {
   const activeCategoryTheme = CATEGORY_BUTTON_THEME[activeCat] || CATEGORY_BUTTON_THEME.Polleria;
+  const quickModeHelpButtonTitle = quickModeHelpOpen ? "Ocultar atajos" : "Ver atajos";
+  const searchField = (
+    <div className={["flex items-center gap-2", quickMode ? "mt-3" : ""].join(" ")}>
+      <input
+        className="input border-slate-200 bg-white/90 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-slate-700"
+        autoFocus
+        ref={searchInputRef}
+        placeholder="Buscar producto..."
+        value={search}
+        onChange={(e) => onSearchChange(e.target.value)}
+        onKeyDown={onSearchKeyDown}
+      />
+    </div>
+  );
+  const quickModeCard = (
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:shadow-slate-950/40">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+            Caja rapida
+          </div>
+          <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {quickMode ? "Activa en este navegador" : "Desactivada"}
+          </div>
+          <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+            {quickMode
+              ? "Usa Transferencia por defecto y permite cobrar con atajos."
+              : "Activalo para acelerar la confirmacion de venta solo con teclado."}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {quickMode ? (
+            <button
+              type="button"
+              onClick={onToggleQuickModeHelp}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {quickModeHelpButtonTitle}
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onQuickModeChange}
+            aria-pressed={quickMode}
+            className={[
+              "rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition",
+              quickMode
+                ? "border-slate-300 bg-slate-100 text-slate-950 hover:bg-slate-200 dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800",
+            ].join(" ")}
+          >
+            {quickMode ? "Caja rapida ON" : "Activar caja rapida"}
+          </button>
+        </div>
+      </div>
+
+      {quickMode && quickModeHelpOpen ? (
+        <div className="mt-3 grid gap-2 border-t border-slate-200 pt-3 text-sm text-slate-700 dark:border-slate-800 dark:text-slate-300 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Redirigir a barra de busqueda</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">B / Esc</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Moverse entre productos encontrados</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Flechas</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Medios de Pago</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Alt+1 Efectivo</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">Alt+2 Tarjeta | Alt+3 Transferencia</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Confirmar Venta</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Alt+Enter</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Desactivar caja rapida</div>
+            <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">Alt+Q</div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white/85 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Sugerencia</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">Si el cobro es simple, no hace falta abrir el detalle.</div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 
   return (
     <section
@@ -81,17 +174,8 @@ export default function SalesCatalogPanel({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          className="input border-slate-200 bg-white/90 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-slate-700"
-          autoFocus
-          ref={searchInputRef}
-          placeholder="Buscar producto..."
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          onKeyDown={onSearchKeyDown}
-        />
-      </div>
+      {searchField}
+      {quickModeCard}
 
       {isGlobalSearch ? (
         <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">

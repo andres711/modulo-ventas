@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Toast from "../components/Toast";
+import { PAYMENT_METHODS } from "../entities/payment/constants";
 import { DEFAULT_PRODUCT_CATEGORY } from "../entities/product/constants";
 import { isKgUnit, roundStockForUnit } from "../entities/product/model";
 import { createSale } from "../features/sales/api";
@@ -15,6 +16,33 @@ import SalesMobileCartDrawer from "../features/sales/ui/SalesMobileCartDrawer";
 import { useToast } from "../hooks/useToast";
 import { formatMoney } from "../lib/format";
 import { sleep, vibrate } from "../lib/ui";
+
+const QUICK_MODE_STORAGE_KEY = "sales.quickMode";
+const QUICK_MODE_HELP_SEEN_STORAGE_KEY = "sales.quickModeHelpSeen";
+const QUICK_MODE_DEFAULT_PAYMENT_METHOD = PAYMENT_METHODS[2];
+
+function getInitialQuickMode() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(QUICK_MODE_STORAGE_KEY) === "true";
+}
+
+function hasSeenQuickModeHelp() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(QUICK_MODE_HELP_SEEN_STORAGE_KEY) === "true";
+}
+
+function markQuickModeHelpAsSeen() {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(QUICK_MODE_HELP_SEEN_STORAGE_KEY, "true");
+}
+
+function isEditableTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true']")
+  );
+}
 
 export default function Sales() {
   const { toast, showToast, hideToast } = useToast();
@@ -32,6 +60,9 @@ export default function Sales() {
 
   // Sale meta
   const [msg, setMsg] = useState({ text: "", ok: true });
+  const [quickMode, setQuickMode] = useState(getInitialQuickMode);
+  const [quickModeHelpOpen, setQuickModeHelpOpen] = useState(getInitialQuickMode);
+  const [quickModeCheckoutExpanded, setQuickModeCheckoutExpanded] = useState(false);
 
   // Saving sale
   const [savingSale, setSavingSale] = useState(false);
@@ -64,6 +95,48 @@ export default function Sales() {
     setClearCartConfirmOpen(false);
   }, []);
 
+  const openQuickModeHelp = useCallback(() => {
+    setQuickModeHelpOpen(true);
+  }, []);
+
+  const toggleQuickModeHelp = useCallback(() => {
+    setQuickModeHelpOpen((prev) => !prev);
+  }, []);
+
+  const setQuickModeEnabled = useCallback(
+    (nextQuickMode) => {
+      setQuickMode(nextQuickMode);
+      setQuickModeCheckoutExpanded(false);
+
+      if (!nextQuickMode) {
+        setQuickModeHelpOpen(false);
+        showToast({ ok: true, text: "Caja rapida desactivada" });
+        return;
+      }
+
+      setQuickModeHelpOpen(true);
+
+      if (!hasSeenQuickModeHelp()) {
+        markQuickModeHelpAsSeen();
+        showToast({
+          ok: true,
+          text: "Caja rapida activada. Alt+Enter confirma y Alt+1/2/3 cambia el cobro.",
+          ms: 5200,
+          actionLabel: "Ver atajos",
+          onAction: openQuickModeHelp,
+        });
+        return;
+      }
+
+      showToast({ ok: true, text: "Caja rapida activada" });
+    },
+    [openQuickModeHelp, showToast]
+  );
+
+  const toggleQuickMode = useCallback(() => {
+    setQuickModeEnabled(!quickMode);
+  }, [quickMode, setQuickModeEnabled]);
+
   const { products, setProducts, loadingProducts, refresh } = useSalesProducts({
     showToast,
     onStatusChange: setMsg,
@@ -91,8 +164,17 @@ export default function Sales() {
     paymentDifference,
     togglePaymentMethod,
     setPaymentAmount,
+    selectSinglePaymentMethod,
     resetPayments,
   } = useSalePayments(total);
+
+  const handleSelectPaymentShortcut = useCallback(
+    (method) => {
+      setQuickModeCheckoutExpanded(false);
+      selectSinglePaymentMethod(method);
+    },
+    [selectSinglePaymentMethod]
+  );
 
   const {
     kgOpen,
@@ -129,6 +211,25 @@ export default function Sales() {
 
   const isGlobalSearch = search.trim().length > 0;
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(QUICK_MODE_STORAGE_KEY, String(quickMode));
+  }, [quickMode]);
+
+  useEffect(() => {
+    if (!quickMode) return;
+    if (cartItems.length === 0) return;
+    if (paymentBreakdown.length > 0) return;
+
+    selectSinglePaymentMethod(QUICK_MODE_DEFAULT_PAYMENT_METHOD);
+  }, [cartItems.length, paymentBreakdown.length, quickMode, selectSinglePaymentMethod]);
+
+  useEffect(() => {
+    if (paymentBreakdown.length > 1) {
+      setQuickModeCheckoutExpanded(true);
+    }
+  }, [paymentBreakdown.length]);
+
   const handleEscapeAction = useCallback(() => {
     if (clearCartConfirmOpen) {
       closeClearCartConfirm();
@@ -157,23 +258,10 @@ export default function Sales() {
   ]);
 
   useEffect(() => {
-    function handleWindowKeyDown(e) {
-      if (e.key !== "Escape") return;
-
-      e.preventDefault();
-      handleEscapeAction();
-    }
-
-    window.addEventListener("keydown", handleWindowKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleWindowKeyDown);
-    };
-  }, [handleEscapeAction]);
-
-  useEffect(() => {
     if (cartItems.length > 0) return;
     setCartDetailsOpen(false);
     setClearCartConfirmOpen(false);
+    setQuickModeCheckoutExpanded(false);
     resetPayments();
     setMsg({ text: "", ok: true });
   }, [cartItems.length, resetPayments]);
@@ -311,7 +399,7 @@ export default function Sales() {
   // -------------------------
   // Cart actions
   // -------------------------
-  function applySaleToLocalProducts(items) {
+  const applySaleToLocalProducts = useCallback((items) => {
     setProducts((prev) =>
       prev.map((product) => {
         const soldItem = items.find((item) => item.producto.id === product.id);
@@ -326,7 +414,7 @@ export default function Sales() {
         };
       })
     );
-  }
+  }, [setProducts]);
 
   function addToCart(p) {
     if (Number(p.stock || 0) <= 0) {
@@ -362,7 +450,7 @@ export default function Sales() {
   // -------------------------
   // Save sale
   // -------------------------
-  async function saveSale() {
+  const saveSale = useCallback(async () => {
     if (cart.size === 0) {
       setMsg({ text: "", ok: true });
       showToast({ ok: false, text: "No hay productos seleccionados" });
@@ -432,6 +520,7 @@ export default function Sales() {
       resetCart();
       clearSearch();
       resetPayments();
+      setQuickModeCheckoutExpanded(false);
       setMsg({ text: "Venta guardada ✅", ok: true });
       showToast({ ok: true, text: "Venta guardada ✅" });
       vibrate(35);
@@ -446,9 +535,20 @@ export default function Sales() {
     } finally {
       setSavingSale(false);
     }
-  }
+  }, [
+    applySaleToLocalProducts,
+    cart,
+    clearSearch,
+    focusSearch,
+    obs,
+    paymentBreakdown,
+    paymentDifference,
+    resetCart,
+    resetPayments,
+    showToast,
+  ]);
 
-  async function saveSaleAndCloseCart() {
+  const saveSaleAndCloseCart = useCallback(async () => {
     const ok = await saveSale();
     if (!ok) return;
 
@@ -456,7 +556,7 @@ export default function Sales() {
     setCartOpen(false);
     setMsg({ text: "", ok: true });
     focusSearch();
-  }
+  }, [focusSearch, saveSale]);
 
   function clearCart() {
     if (cart.size === 0) return;
@@ -464,7 +564,69 @@ export default function Sales() {
     clearCartState();
     setCartDetailsOpen(false);
     setClearCartConfirmOpen(false);
+    setQuickModeCheckoutExpanded(false);
   }
+
+  useEffect(() => {
+    function handleWindowKeyDown(e) {
+      if (e.altKey && e.key === "Enter") {
+        e.preventDefault();
+        saveSaleAndCloseCart();
+        return;
+      }
+
+      if (
+        !e.ctrlKey
+        && !e.altKey
+        && !e.metaKey
+        && e.key.toLowerCase() === "b"
+        && !isEditableTarget(e.target)
+        && !clearCartConfirmOpen
+        && !kgOpen
+        && !cartOpen
+      ) {
+        e.preventDefault();
+        clearAndFocusSearch();
+        return;
+      }
+
+      if (e.altKey) {
+        const paymentShortcuts = {
+          Digit1: PAYMENT_METHODS[0],
+          Numpad1: PAYMENT_METHODS[0],
+          Digit2: PAYMENT_METHODS[1],
+          Numpad2: PAYMENT_METHODS[1],
+          Digit3: PAYMENT_METHODS[2],
+          Numpad3: PAYMENT_METHODS[2],
+        };
+        const selectedMethod = paymentShortcuts[e.code];
+
+        if (selectedMethod) {
+          e.preventDefault();
+          handleSelectPaymentShortcut(selectedMethod);
+          return;
+        }
+
+        if (e.code === "KeyQ") {
+          e.preventDefault();
+          toggleQuickMode();
+          return;
+        }
+      }
+
+      if (e.key !== "Escape") return;
+
+      e.preventDefault();
+      handleEscapeAction();
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [cartOpen, clearAndFocusSearch, clearCartConfirmOpen, handleEscapeAction, handleSelectPaymentShortcut, kgOpen, saveSaleAndCloseCart, toggleQuickMode]);
+
+  const quickModeExpanded = quickModeCheckoutExpanded || paymentBreakdown.length > 1;
 
   // -------------------------
   // Render
@@ -488,6 +650,10 @@ export default function Sales() {
         productButtonRefs={productButtonRefs}
         addToCart={addToCart}
         onProductKeyDown={handleProductKeyDown}
+        quickMode={quickMode}
+        onQuickModeChange={toggleQuickMode}
+        quickModeHelpOpen={quickModeHelpOpen}
+        onToggleQuickModeHelp={toggleQuickModeHelp}
       />
 
       <SalesDesktopCartPanel
@@ -510,6 +676,9 @@ export default function Sales() {
         setPaymentAmount={setPaymentAmount}
         setObs={setObs}
         msg={msg}
+        quickMode={quickMode}
+        quickModeExpanded={quickModeExpanded}
+        onToggleQuickModeExpanded={() => setQuickModeCheckoutExpanded((prev) => !prev)}
       />
 
       <SalesMobileCartDrawer
@@ -535,6 +704,9 @@ export default function Sales() {
         togglePaymentMethod={togglePaymentMethod}
         setPaymentAmount={setPaymentAmount}
         setObs={setObs}
+        quickMode={quickMode}
+        quickModeExpanded={quickModeExpanded}
+        onToggleQuickModeExpanded={() => setQuickModeCheckoutExpanded((prev) => !prev)}
       />
 
       <ClearCartConfirmDrawer

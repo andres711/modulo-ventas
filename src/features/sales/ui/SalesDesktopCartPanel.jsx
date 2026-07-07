@@ -25,6 +25,9 @@ export default function SalesDesktopCartPanel({
   setPaymentAmount,
   setObs,
   msg,
+  quickMode,
+  quickModeExpanded,
+  onToggleQuickModeExpanded,
 }) {
   return (
     <aside className="sticky top-6 hidden self-start card border-slate-200 bg-white p-4 shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:shadow-slate-950/50 md:block">
@@ -64,6 +67,9 @@ export default function SalesDesktopCartPanel({
             paymentDrafts={paymentDrafts}
             paymentMethodOrder={paymentOrder}
             obs={obs}
+            quickMode={quickMode}
+            quickModeExpanded={quickModeExpanded}
+            onToggleQuickModeExpanded={onToggleQuickModeExpanded}
             paymentDifference={paymentDifference}
             onTogglePaymentMethod={togglePaymentMethod}
             onPaymentAmountChange={setPaymentAmount}
