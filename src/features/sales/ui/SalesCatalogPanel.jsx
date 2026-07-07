@@ -65,7 +65,7 @@ export default function SalesCatalogPanel({
             className={[
               "mt-1 text-xs",
               quickMode
-                ? "inline-flex rounded-lg bg-red-100 px-2 py-1 font-semibold text-red-700 dark:bg-red-950/60 dark:text-red-200"
+                ? "inline-flex rounded-lg bg-sky-100 px-2 py-1 font-semibold text-sky-800 dark:bg-sky-950/60 dark:text-sky-200"
                 : "text-slate-600 dark:text-slate-300",
             ].join(" ")}
           >
